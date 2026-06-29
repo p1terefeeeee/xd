@@ -1,4 +1,4 @@
--- p1_v3.6.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + SILENT CRASH FIX]
+-- p1_v3.7.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + SILENT CRASH FIX + NO-RUBY LOOP]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -32,7 +32,7 @@ env.SqaysConfig.AshConvertSpeed = env.SqaysConfig.AshConvertSpeed or 1.0
 env.SqaysConfig.BlazeQuestSpeed = env.SqaysConfig.BlazeQuestSpeed or 5.0
 env.SqaysConfig.ExchangeGemsSpeed = env.SqaysConfig.ExchangeGemsSpeed or 10.0
 env.SqaysConfig.SelectedIceLevel = env.SqaysConfig.SelectedIceLevel or 0
-env.SqaysConfig.MiningTarget = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop"
+env.SqaysConfig.MiningTarget = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite Loop"
 env.SqaysConfig.MovementMethod = env.SqaysConfig.MovementMethod or "Walking"
 
 env.SqaysConfig.AutoUpgradeNoob = env.SqaysConfig.AutoUpgradeNoob or false
@@ -62,26 +62,45 @@ local Settings = {
     UIAccentColor = Color3.fromRGB(150, 150, 255)
 }
 
-local looping, totalMined, minedInLast5Mins, display5MinMined = false, 0, 0, 0      
-local estPerHour, celestiumMined, voidsteelMined, aetheriteMined, rubyMined = 0, 0, 0, 0, 0
-local runTime, history5min = 0, {}          
+local looping = false
+local totalMined = 0            
+local minedInLast5Mins = 0      
+local display5MinMined = 0      
+local estPerHour = 0            
+local celestiumMined = 0        
+local voidsteelMined = 0        
+local aetheriteMined = 0
+local rubyMined = 0
+local runTime = 0 
+local history5min = {}          
 
 local RuneNames = {"Basic", "Super", "Advanced", "Cosmic Prism", "Hacker", "Snowy", "Deepcore"}
 local GemNames = {"All", "Coal", "Iron", "Sliver", "Gold", "Platinum", "Titanium", "Emerald", "Diamond", "Opal", "Jade", "Amber", "Topaz", "Ruby", "Amethyst", "Quartz", "Sapphire", "Uranium", "Crystal", "Obsidian"}
-local RuneSettings, GemsToExchange, GemsSelectedMap = {}, {}, {}
+
+local RuneSettings = {}
 for _, name in ipairs(RuneNames) do RuneSettings[name] = false end
 
-local saveFileName, presetFileName = "p1_Rebirth_Storage.json", "p1_GUI_Presets.json"
+local GemsToExchange = {}
+local GemsSelectedMap = {}
+
+local saveFileName = "p1_Rebirth_Storage.json"
+local presetFileName = "p1_GUI_Presets.json"
 
 local function saveSettings()
-    local data = {SqaysConfig = env.SqaysConfig, Settings = Settings, RuneSettings = RuneSettings, GemsSelectedMap = GemsSelectedMap}
+    local data = {
+        SqaysConfig = env.SqaysConfig,
+        Settings = Settings,
+        RuneSettings = RuneSettings,
+        GemsSelectedMap = GemsSelectedMap
+    }
     pcall(function() if writefile then writefile(saveFileName, HttpService:JSONEncode(data)) end end)
 end
 
 local function loadSettings()
     pcall(function()
         if readfile and isfile and isfile(saveFileName) then
-            local data = HttpService:JSONDecode(readfile(saveFileName))
+            local raw = readfile(saveFileName)
+            local data = HttpService:JSONDecode(raw)
             if data then
                 if data.SqaysConfig then for k, v in pairs(data.SqaysConfig) do env.SqaysConfig[k] = v end end
                 if data.Settings then for k, v in pairs(data.Settings) do Settings[k] = v end end
@@ -107,31 +126,55 @@ end
 rebuildGemsToExchangeList()
 
 local function syncGlobals()
-    _G.MiningSpeed = env.SqaysConfig.MiningSpeed; _G.TierSpeed = env.SqaysConfig.TierSpeed; _G.RuneSpeed = env.SqaysConfig.RuneSpeed
-    _G.TreeSpeed = env.SqaysConfig.TreeSpeed; _G.WaterPumpSpeed = env.SqaysConfig.WaterPumpSpeed; _G.IceConvertSpeed = env.SqaysConfig.IceConvertSpeed
-    _G.AshConvertSpeed = env.SqaysConfig.AshConvertSpeed; _G.BlazeQuestSpeed = env.SqaysConfig.BlazeQuestSpeed; _G.ExchangeGemsSpeed = env.SqaysConfig.ExchangeGemsSpeed
-    _G.AutoRollTier = env.SqaysConfig.AutoRollTier; _G.AutoHitTree = env.SqaysConfig.AutoHitTree; _G.AutoWaterPump = env.SqaysConfig.AutoWaterPump
-    _G.AutoBlazeQuest = env.SqaysConfig.AutoBlazeQuest; _G.AutoConvertWoodToAsh = env.SqaysConfig.AutoConvertWoodToAsh; _G.AutoExchangeGems = env.SqaysConfig.AutoExchangeGems
-    _G.AutoRollRunes = env.SqaysConfig.AutoRollRunes; _G.AntiAFK = env.SqaysConfig.AntiAFK
+    _G.MiningSpeed = env.SqaysConfig.MiningSpeed
+    _G.TierSpeed = env.SqaysConfig.TierSpeed
+    _G.RuneSpeed = env.SqaysConfig.RuneSpeed
+    _G.TreeSpeed = env.SqaysConfig.TreeSpeed
+    _G.WaterPumpSpeed = env.SqaysConfig.WaterPumpSpeed
+    _G.IceConvertSpeed = env.SqaysConfig.IceConvertSpeed
+    _G.AshConvertSpeed = env.SqaysConfig.AshConvertSpeed
+    _G.BlazeQuestSpeed = env.SqaysConfig.BlazeQuestSpeed
+    _G.ExchangeGemsSpeed = env.SqaysConfig.ExchangeGemsSpeed
+    _G.AutoRollTier = env.SqaysConfig.AutoRollTier
+    _G.AutoHitTree = env.SqaysConfig.AutoHitTree
+    _G.AutoWaterPump = env.SqaysConfig.AutoWaterPump
+    _G.AutoBlazeQuest = env.SqaysConfig.AutoBlazeQuest
+    _G.AutoConvertWoodToAsh = env.SqaysConfig.AutoConvertWoodToAsh
+    _G.AutoExchangeGems = env.SqaysConfig.AutoExchangeGems
+    _G.AutoRollRunes = env.SqaysConfig.AutoRollRunes
+    _G.AntiAFK = env.SqaysConfig.AntiAFK
 end
 syncGlobals()
 
 local master_routes = {
-    ["Voidsteel + Celestium + Aetherite + Ruby Loop"] = {
-        {name = "Voidsteel_1", pos = Vector3.new(699.21, 7.74, 2827.68)}, {name = "Voidsteel_2", pos = Vector3.new(683.25, 7.74, 2858.61)},
-        {name = "Voidsteel_3", pos = Vector3.new(705.66, 7.74, 2852.43)}, {name = "Voidsteel_4", pos = Vector3.new(723.42, 7.74, 2874.51)}, {name = "Voidsteel_5", pos = Vector3.new(727.90, 7.74, 2836.23)},
-        {name = "Celestium_4", pos = Vector3.new(725.19, 7.87, 2804.33)}, {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)}, 
-        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)}, {name = "Celestium_2", pos = Vector3.new(687.15, 7.87, 2772.15)}, {name = "Celestium_1", pos = Vector3.new(692.65, 7.87, 2799.67)},
-        {name = "Aetherite_5", pos = Vector3.new(659.25, 7.34, 2783.24)}, {name = "Aetherite_4", pos = Vector3.new(645.36, 7.34, 2760.03)},
-        {name = "Aetherite_3", pos = Vector3.new(611.97, 7.34, 2769.11)}, {name = "Aetherite_2", pos = Vector3.new(593.95, 7.34, 2790.59)}, {name = "Aetherite_1", pos = Vector3.new(628.22, 7.34, 2793.83)},
-        {name = "Ruby_4", pos = Vector3.new(621.25, 9.18, 2840.62)}, {name = "Ruby_1", pos = Vector3.new(598.23, 9.18, 2856.87)},
-        {name = "Ruby_2", pos = Vector3.new(616.18, 9.72, 2871.34)}, {name = "Ruby_3", pos = Vector3.new(641.74, 9.18, 2870.04)}, {name = "Ruby_5", pos = Vector3.new(652.05, 9.18, 2845.19)}
+    ["Voidsteel + Celestium + Aetherite Loop"] = {
+        {name = "Voidsteel_1", pos = Vector3.new(699.21, 7.74, 2827.68)},
+        {name = "Voidsteel_2", pos = Vector3.new(683.25, 7.74, 2858.61)},
+        {name = "Voidsteel_3", pos = Vector3.new(705.66, 7.74, 2852.43)},
+        {name = "Voidsteel_4", pos = Vector3.new(723.42, 7.74, 2874.51)},
+        {name = "Voidsteel_5", pos = Vector3.new(727.90, 7.74, 2836.23)},
+        {name = "Celestium_4", pos = Vector3.new(725.19, 7.87, 2804.33)},
+        {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)}, 
+        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)}, 
+        {name = "Celestium_2", pos = Vector3.new(687.15, 7.87, 2772.15)},
+        {name = "Celestium_1", pos = Vector3.new(692.65, 7.87, 2799.67)},
+        {name = "Aetherite_5", pos = Vector3.new(659.25, 7.34, 2783.24)},
+        {name = "Aetherite_4", pos = Vector3.new(645.36, 7.34, 2760.03)},
+        {name = "Aetherite_3", pos = Vector3.new(611.97, 7.34, 2769.11)},
+        {name = "Aetherite_2", pos = Vector3.new(593.95, 7.34, 2790.59)},
+        {name = "Aetherite_1", pos = Vector3.new(628.22, 7.34, 2793.83)}
     },
     ["Voidsteel + Celestium Loop"] = {
-        {name = "Celestium_4", pos = Vector3.new(725.19, 7.87, 2804.33)}, {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)}, 
-        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)}, {name = "Celestium_2", pos = Vector3.new(687.15, 7.87, 2772.15)}, {name = "Celestium_1", pos = Vector3.new(692.65, 7.87, 2799.67)},
-        {name = "Voidsteel_1", pos = Vector3.new(699.21, 7.74, 2827.68)}, {name = "Voidsteel_2", pos = Vector3.new(683.25, 7.74, 2858.61)},
-        {name = "Voidsteel_4", pos = Vector3.new(723.42, 7.74, 2874.51)}, {name = "Voidsteel_3", pos = Vector3.new(705.66, 7.74, 2852.43)}, {name = "Voidsteel_5", pos = Vector3.new(727.90, 7.74, 2836.23)}
+        {name = "Celestium_4", pos = Vector3.new(725.19, 7.87, 2804.33)},
+        {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)}, 
+        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)}, 
+        {name = "Celestium_2", pos = Vector3.new(687.15, 7.87, 2772.15)},
+        {name = "Celestium_1", pos = Vector3.new(692.65, 7.87, 2799.67)},
+        {name = "Voidsteel_1", pos = Vector3.new(699.21, 7.74, 2827.68)},
+        {name = "Voidsteel_2", pos = Vector3.new(683.25, 7.74, 2858.61)},
+        {name = "Voidsteel_4", pos = Vector3.new(723.42, 7.74, 2874.51)},
+        {name = "Voidsteel_3", pos = Vector3.new(705.66, 7.74, 2852.43)},
+        {name = "Voidsteel_5", pos = Vector3.new(727.90, 7.74, 2836.23)}
     }
 }
 
@@ -171,7 +214,7 @@ local function dispatchStatsWebhook()
                 {name = "💜 Voidsteel", value = string.format("`%d`", voidsteelMined), inline = true},
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
-            }, footer = { text = "p1 v3.6" }, timestamp = DateTime.now():ToIsoDate()
+            }, footer = { text = "p1 v3.7" }, timestamp = DateTime.now():ToIsoDate()
         }}
     }
     pcall(function() request({Url = webhookUrl, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(payload)}) end)
@@ -263,7 +306,7 @@ end
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v3.6",
+    Title = "p1 v3.7",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
@@ -288,7 +331,7 @@ ExecuteToggle:OnChanged(function(Value) looping = Value end)
 local dropOptions = {}
 for name, _ in pairs(master_routes) do table.insert(dropOptions, name) end
 table.sort(dropOptions, function(a, b)
-    if a == "Voidsteel + Celestium + Aetherite + Ruby Loop" then return true end; if b == "Voidsteel + Celestium + Aetherite + Ruby Loop" then return false end
+    if a == "Voidsteel + Celestium + Aetherite Loop" then return true end; if b == "Voidsteel + Celestium + Aetherite Loop" then return false end
     return a < b
 end)
 
@@ -305,7 +348,7 @@ local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", {Title = "Ore Break (
 OreBreakInput:OnChanged(function(Value) local num = tonumber(Value); if num then Settings.WaitTimeOnOre = math.clamp(num, 0.20, 3.0); saveSettings() end end)
 
 Tabs.Mining:AddSection("Telemetry")
-local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.6)", Content = "Waiting for execution..."})
+local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.7)", Content = "Waiting for execution..."})
 
 Tabs.Mining:AddSection("Ore Exchange")
 local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems})
@@ -438,7 +481,7 @@ local AFKToggle = Tabs.SettingsTab:AddToggle("S_AntiAFK", {Title = "Anti-AFK Shi
 AFKToggle:OnChanged(function(Value) setAntiIdle(Value); saveSettings() end) 
 
 local GhostToggle = Tabs.SettingsTab:AddToggle("S_GhostMode", {Title = "Ghost Mode (Noclip)", Default = Settings.UseNoclip}) 
-GhostToggle:OnChanged(function(Value) if Value then noclip() else clip() end; saveSettings() end) 
+GhostToggle:OnChanged(function(Value) if v then noclip() else clip() end; saveSettings() end) 
 
 Tabs.SettingsTab:AddSection("Danger Zone") 
 Tabs.SettingsTab:AddButton({ 
@@ -466,10 +509,11 @@ task.spawn(function()
         task.wait(1)
         if runTime > 0 then estPerHour = math.floor((totalMined / runTime) * 3600) end 
         local statusText = looping and "🟢 ACTIVE" or "🔴 PAUSED" 
-        TelemetryPara:SetDesc(string.format(
+        local dispText = string.format(
             "Status: %s\n⏱️ Last 5m: %d | 📈 Rate: %d/h\n🔋 Mined: %d | ⏳ Uptime: %dh %dm\n📊 Trend: %s\n💎 Celestium: %d | 💜 Voidsteel: %d\n💙 Aetherite: %d | ❤️ Ruby: %d",
             statusText, display5MinMined, estPerHour, totalMined, math.floor(runTime/3600), math.floor((runTime%3600)/60), getTrendData(), celestiumMined, voidsteelMined, aetheriteMined, rubyMined
-        ))
+        )
+        pcall(function() TelemetryPara:SetDesc(dispText) end)
     end
 end)
 
@@ -511,7 +555,7 @@ end)
 task.spawn(function()
     while scriptRunning do
         if looping then
-            local mode = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop"
+            local mode = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite Loop"
             local activeRoute = master_routes[mode]
             if activeRoute then
                 for _, target in ipairs(activeRoute) do
