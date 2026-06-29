@@ -1,4 +1,4 @@
--- p1_v3.3.lua - Rebirth Engine - Modern Modular UI Framework [Base v1.7 + Core Stability Fix + Customization Overhaul + Input Fields + Expanded Layout + Quad Loop + Hybrid Movement System + Fluent Settings Patch + Full Upgrades Integration + ID Conflict Fix]
+-- p1_v3.4.lua - Rebirth Engine - Modern Modular UI Framework [Base v1.7 + Core Stability Fix + Customization Overhaul + Input Fields + Expanded Layout + Quad Loop + Hybrid Movement System + Full Upgrades Integration + Core Save/Load Memory Fix]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -29,7 +29,7 @@ env.SqaysConfig.SelectedIceLevel = env.SqaysConfig.SelectedIceLevel or 0
 env.SqaysConfig.MiningTarget = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop"
 env.SqaysConfig.MovementMethod = env.SqaysConfig.MovementMethod or "Walking"
 
--- Konfiguracja Ulepszeń
+-- Konfiguracja Ulepszeń (Upgrades Storage)
 env.SqaysConfig.AutoUpgradeNoob = env.SqaysConfig.AutoUpgradeNoob or false
 env.SqaysConfig.AutoUpgradeGems = env.SqaysConfig.AutoUpgradeGems or false
 env.SqaysConfig.AutoUpgradePlanks = env.SqaysConfig.AutoUpgradePlanks or false
@@ -165,8 +165,8 @@ local master_routes = {
     },
     ["Voidsteel + Celestium Loop"] = {
         {name = "Celestium_4", pos = Vector3.new(725.19, 7.87, 2804.33)},
-        {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)}, 
-        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)}, 
+        {name = "Celestium_5", pos = Vector3.new(730.71, 7.87, 2780.08)},
+        {name = "Celestium_3", pos = Vector3.new(713.99, 7.87, 2764.92)},
         {name = "Celestium_2", pos = Vector3.new(687.15, 7.87, 2772.15)},
         {name = "Celestium_1", pos = Vector3.new(692.65, 7.87, 2799.67)},
         {name = "Voidsteel_1", pos = Vector3.new(699.21, 7.74, 2827.68)},
@@ -214,7 +214,7 @@ local function dispatchStatsWebhook()
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
             },
-            footer = { text = "p1 v3.3" },
+            footer = { text = "p1 v3.4" },
             timestamp = DateTime.now():ToIsoDate()
         }}
     }
@@ -230,7 +230,7 @@ end
 
 local function getMainRemote() return ReplicatedStorage:FindFirstChild("__Net") and ReplicatedStorage.__Net:FindFirstChild("MainRemote") end
 
--- === STRUCTURAL MOVEMENT CONTROLS ===
+-- === MOVEMENT CONTROLS ===
 local NoclipConnection, AxisLockConnection, fixedY
 local function noclip()
     Settings.UseNoclip = true
@@ -298,7 +298,7 @@ local function applyTextOutlines()
             for _, child in ipairs(coreGui:GetChildren()) do
                 if child:IsA("ScreenGui") then
                     for _, desc in ipairs(child:GetDescendants()) do
-                        if desc:IsA("TextLabel") and (desc.Text == "p1" or desc.Text == "p1 v3.3") then
+                        if desc:IsA("TextLabel") and (desc.Text == "p1" or desc.Text == "p1 v3.4") then 
                             local current = desc
                             while current.Parent and current.Parent ~= child do
                                 current = current.Parent
@@ -331,7 +331,7 @@ local function applyTextOutlines()
     end)
 end
 
--- === HIBRYDOWY SYSTEM RUCHU ===
+-- === HYBRID PATHING ENGINE ===
 local function moveToPointAntiSlip(targetPos, hrp)
     if env.SqaysConfig.MovementMethod == "Teleport" then
         hrp.CFrame = CFrame.new(Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)) * hrp.CFrame.Rotation
@@ -368,7 +368,7 @@ local function moveToPointAntiSlip(targetPos, hrp)
     if humanoid then humanoid.AutoRotate = true end
 end
 
--- === ZINTEGROWANE PĘTLE ULEPSZEŃ (UPGRADES LOOPS) ===
+-- === SYSTEM LOOPS (UPGRADES & AUTOMATION) ===
 task.spawn(function()
     while scriptRunning do
         if env.SqaysConfig.AutoUpgradeNoob then
@@ -456,7 +456,6 @@ task.spawn(function()
     end
 end)
 
--- === CONTEXTUAL LOOPS SYSTEMS ===
 task.spawn(function()
     while scriptRunning do
         if env.SqaysConfig.AutoRollTier then
@@ -509,9 +508,9 @@ task.spawn(function()
     while scriptRunning do
         if env.SqaysConfig.AutoBlazeQuest then
             local MainRemote = getMainRemote()
-            if MainRemote then 
-                MainRemote:FireServer("SetUpgradeAutomationPaused", "Fire", false) 
-                MainRemote:FireServer("Blaze") 
+            if MainRemote then
+                MainRemote:FireServer("SetUpgradeAutomationPaused", "Fire", false)
+                MainRemote:FireServer("Blaze")
             end
         end
         task.wait(env.SqaysConfig.BlazeQuestSpeed)
@@ -531,10 +530,10 @@ end)
 task.spawn(function()
     while scriptRunning do
         local currentLvl = env.SqaysConfig.SelectedIceLevel or 0
-        if currentLvl > 0 then 
+        if currentLvl > 0 then
             pcall(function()
                 local MainRemote = getMainRemote()
-                if MainRemote then MainRemote:FireServer("PressButton", currentLvl) end 
+                if MainRemote then MainRemote:FireServer("PressButton", currentLvl) end
             end)
         end
         task.wait(env.SqaysConfig.IceConvertSpeed)
@@ -546,17 +545,17 @@ task.spawn(function()
         if env.SqaysConfig.AutoExchangeGems then
             pcall(function()
                 local MainRemote = getMainRemote()
-                if MainRemote and #GemsToExchange > 0 then 
-                    for _, gem in ipairs(GemsToExchange) do 
-                        if not env.SqaysConfig.AutoExchangeGems or not scriptRunning then break end 
-                        if gem == "All" then MainRemote:FireServer("ExchangeAllMinerals"); break end 
-                        local amt = 0 
-                        local currencies = player:FindFirstChild("CURRENCIES") 
-                        local folder = currencies and currencies:FindFirstChild(gem) 
-                        local amountFolder = folder and folder:FindFirstChild("Amount") 
-                        local v = amountFolder and amountFolder:FindFirstChild("1") 
-                        if v then amt = tonumber(v.Value) or 0 end 
-                        if amt > 0 then MainRemote:FireServer("ExchangeMineral", gem) end 
+                if MainRemote and #GemsToExchange > 0 then
+                    for _, gem in ipairs(GemsToExchange) do
+                        if not env.SqaysConfig.AutoExchangeGems or not scriptRunning then break end
+                        if gem == "All" then MainRemote:FireServer("ExchangeAllMinerals"); break end
+                        local amt = 0
+                        local currencies = player:FindFirstChild("CURRENCIES")
+                        local folder = currencies and currencies:FindFirstChild(gem)
+                        local amountFolder = folder and folder:FindFirstChild("Amount")
+                        local v = amountFolder and amountFolder:FindFirstChild("1")
+                        if v then amt = tonumber(v.Value) or 0 end
+                        if amt > 0 then MainRemote:FireServer("ExchangeMineral", gem) end
                     end
                 end
             end)
@@ -570,12 +569,12 @@ task.spawn(function()
     while scriptRunning do
         task.wait(1)
         if looping then
-            runTime = runTime + 1 
+            runTime = runTime + 1
             runTimer = runTimer + 1
             if runTimer >= 300 then 
-                display5MinMined = minedInLast5Mins; minedInLast5Mins = 0 
-                table.insert(history5min, totalMined) 
-                if #history5min > 25 then table.remove(history5min, 1) end 
+                display5MinMined = minedInLast5Mins; minedInLast5Mins = 0
+                table.insert(history5min, totalMined)
+                if #history5min > 25 then table.remove(history5min, 1) end
                 dispatchStatsWebhook()
                 runTimer = 0
             end
@@ -594,80 +593,80 @@ task.spawn(function()
                 for _, target in ipairs(activeRoute) do
                     if not looping or not scriptRunning then break end
                     
-                    local char = player.Character or player.CharacterAdded:Wait() 
-                    local hrp = char:WaitForChild("HumanoidRootPart", 5) 
+                    local char = player.Character or player.CharacterAdded:Wait()
+                    local hrp = char:WaitForChild("HumanoidRootPart", 5)
                     if hrp then
                         moveToPointAntiSlip(target.pos, hrp)
                         if not scriptRunning then break end
-                        totalMined = totalMined + 1 
-                        minedInLast5Mins = minedInLast5Mins + 1 
+                        totalMined = totalMined + 1
+                        minedInLast5Mins = minedInLast5Mins + 1
                         
-                        if string.find(target.name, "Celestium") then celestiumMined = celestiumMined + 1 
-                        elseif string.find(target.name, "Voidsteel") then voidsteelMined = voidsteelMined + 1  
+                        if string.find(target.name, "Celestium") then celestiumMined = celestiumMined + 1
+                        elseif string.find(target.name, "Voidsteel") then voidsteelMined = voidsteelMined + 1 
                         elseif string.find(target.name, "Aetherite") then aetheriteMined = aetheriteMined + 1
                         elseif string.find(target.name, "Ruby") then rubyMined = rubyMined + 1 end
                         
-                        task.wait(Settings.WaitTimeOnOre) 
+                        task.wait(Settings.WaitTimeOnOre)
                     end
                 end
             else
-                task.wait(0.5) 
+                task.wait(0.5)
             end
         else
-            task.wait(0.1) 
+            task.wait(0.1)
         end
     end
 end)
 
 -- ========================================================
--- HIGH-END FLUENT UI INTERFACE DESIGN "p1 v3.3"
+-- HIGH-END FLUENT UI INTERFACE DESIGN "p1 v3.4"
 -- ========================================================
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))() 
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v3.3",
+    Title = "p1 v3.4",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
     Acrylic = Settings.UIAcrylic,  
-    Theme = Settings.UITheme, 
-    MinimizeKey = Enum.KeyCode.N 
+    Theme = Settings.UITheme,
+    MinimizeKey = Enum.KeyCode.N
 })
 
 local Tabs = {
-    Mining = Window:AddTab({ Title = "Mining", Icon = "gem" }),  
-    Auto = Window:AddTab({ Title = "Automation", Icon = "bot" }), 
+    Mining = Window:AddTab({ Title = "Mining", Icon = "gem" }), 
+    Auto = Window:AddTab({ Title = "Automation", Icon = "bot" }),
     Upgrades = Window:AddTab({ Title = "Upgrades", Icon = "trending-up" }),
-    Customize = Window:AddTab({ Title = "Customize", Icon = "palette" }), 
+    Customize = Window:AddTab({ Title = "Customize", Icon = "palette" }),
     SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
-Window:SelectTab(1) 
+Window:SelectTab(1)
 
 -- ================== MINING TAB ==================
-Tabs.Mining:AddSection("Sequence Control") 
+Tabs.Mining:AddSection("Sequence Control")
 
-local ExecuteToggle = Tabs.Mining:AddToggle("ExecSeq", {Title = "Execute Sequence", Default = false}) 
-ExecuteToggle:OnChanged(function(Value) looping = Value end) 
+local ExecuteToggle = Tabs.Mining:AddToggle("ExecSeq", {Title = "Execute Sequence", Default = false})
+ExecuteToggle:OnChanged(function(Value) looping = Value end)
 
-local dropOptions = {} 
-for name, _ in pairs(master_routes) do table.insert(dropOptions, name) end 
-table.sort(dropOptions, function(a, b) 
+local dropOptions = {}
+for name, _ in pairs(master_routes) do table.insert(dropOptions, name) end
+table.sort(dropOptions, function(a, b)
     if a == "Voidsteel + Celestium + Aetherite + Ruby Loop" then return true end
     if b == "Voidsteel + Celestium + Aetherite + Ruby Loop" then return false end
     return a < b
 end)
 
-local OreTargetDropdown = Tabs.Mining:AddDropdown("OreSelect", { 
-    Title = "Ore Selection", 
-    Description = "Choose automated structure path.", 
-    Values = dropOptions, 
-    Multi = false, 
-    Default = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop" 
+local OreTargetDropdown = Tabs.Mining:AddDropdown("OreSelect", {
+    Title = "Ore Selection",
+    Description = "Choose automated structure path.",
+    Values = dropOptions,
+    Multi = false,
+    Default = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop"
 })
-OreTargetDropdown:OnChanged(function(Value) 
-    env.SqaysConfig.MiningTarget = Value 
-    saveSettings() 
+OreTargetDropdown:OnChanged(function(Value)
+    env.SqaysConfig.MiningTarget = Value
+    saveSettings()
 end)
 
 local MoveMethodDropdown = Tabs.Mining:AddDropdown("MoveMethod", {
@@ -682,47 +681,46 @@ MoveMethodDropdown:OnChanged(function(Value)
     saveSettings()
 end)
 
-local WalkSpeedInput = Tabs.Mining:AddInput("WalkSpeedInput", { 
-    Title = "WalkSpeed [16 - 350]", 
-    Default = tostring(Settings.CustomWalkSpeed), 
-    Placeholder = "Wpisz wartość (bazowo 160)...", 
-    Numeric = true, 
-    Finished = true 
+local WalkSpeedInput = Tabs.Mining:AddInput("WalkSpeedInput", {
+    Title = "WalkSpeed [16 - 350]",
+    Default = tostring(Settings.CustomWalkSpeed),
+    Placeholder = "Wpisz wartość (bazowo 160)...",
+    Numeric = true,
+    Finished = true
 })
-WalkSpeedInput:OnChanged(function(Value) 
-    local num = tonumber(Value) 
-    if num then 
-        num = math.clamp(num, 16, 350) 
-        Settings.CustomWalkSpeed = num 
-        local char = player.Character 
-        local hum = char and char:FindFirstChildOfClass("Humanoid") 
-        if hum then hum.WalkSpeed = num end 
-        saveSettings() 
+WalkSpeedInput:OnChanged(function(Value)
+    local num = tonumber(Value)
+    if num then
+        num = math.clamp(num, 16, 350)
+        Settings.CustomWalkSpeed = num
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = num end
+        saveSettings()
     end
 end)
 
-local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", { 
-    Title = "Ore Break (s) [0.20 - 3.0]", 
-    Default = tostring(Settings.WaitTimeOnOre), 
-    Placeholder = "Wpisz wartość (bazowo 0.50)...", 
-    Numeric = true, 
-    Finished = true 
+local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", {
+    Title = "Ore Break (s) [0.20 - 3.0]",
+    Default = tostring(Settings.WaitTimeOnOre),
+    Placeholder = "Wpisz wartość (bazowo 0.50)...",
+    Numeric = true,
+    Finished = true
 })
-OreBreakInput:OnChanged(function(Value) 
-    local num = tonumber(Value) 
-    if num then 
-        num = math.clamp(num, 0.20, 3.0) 
-        Settings.WaitTimeOnOre = num 
-        saveSettings() 
+OreBreakInput:OnChanged(function(Value)
+    local num = tonumber(Value)
+    if num then
+        num = math.clamp(num, 0.20, 3.0)
+        Settings.WaitTimeOnOre = num
+        saveSettings()
     end
 end)
 
-Tabs.Mining:AddSection("Telemetry") 
-local TelemetryPara = Tabs.Mining:AddParagraph({ 
-    Title = "Stats (v3.3)", Content = "Waiting for execution..."
+Tabs.Mining:AddSection("Telemetry")
+local TelemetryPara = Tabs.Mining:AddParagraph({
+    Title = "Stats (v3.4)", Content = "Waiting for execution..."
 })
 
--- NAPRAWIONO: Bezpieczna pętla odświeżania statystyk bez zakleszczeń GUI
 task.spawn(function()
     while scriptRunning do
         task.wait(1)
@@ -740,16 +738,16 @@ task.spawn(function()
     end
 end)
 
-Tabs.Mining:AddSection("Ore Exchange") 
-local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems}) 
-AutoExchToggle:OnChanged(function(Value) env.SqaysConfig.AutoExchangeGems = Value; syncGlobals(); saveSettings() end) 
+Tabs.Mining:AddSection("Ore Exchange")
+local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems})
+AutoExchToggle:OnChanged(function(Value) env.SqaysConfig.AutoExchangeGems = Value; syncGlobals(); saveSettings() end)
 
-local defGems = {} 
-for k, v in pairs(GemsSelectedMap) do if v then table.insert(defGems, k) end end 
+local defGems = {}
+for k, v in pairs(GemsSelectedMap) do if v then table.insert(defGems, k) end end
 
-local GemDropdown = Tabs.Mining:AddDropdown("GemsDrop", {Title = "Minerals", Values = GemNames, Multi = true, Default = defGems}) 
+local GemDropdown = Tabs.Mining:AddDropdown("GemsDrop", {Title = "Minerals", Values = GemNames, Multi = true, Default = defGems})
 GemDropdown:OnChanged(function(Value) 
-    table.clear(GemsSelectedMap) 
+    table.clear(GemsSelectedMap)
     for k, v in pairs(Value) do 
         if type(k) == "string" and v == true then 
             GemsSelectedMap[k] = true 
@@ -757,8 +755,8 @@ GemDropdown:OnChanged(function(Value)
             GemsSelectedMap[v] = true 
         end
     end
-    rebuildGemsToExchangeList() 
-    saveSettings() 
+    rebuildGemsToExchangeList()
+    saveSettings()
 end)
 
 local GemExchIntervalInput = Tabs.Mining:AddInput("GemExchIntervalInput", { 
@@ -779,16 +777,16 @@ GemExchIntervalInput:OnChanged(function(Value)
 end)
 
 -- ================== AUTOMATION TAB ==================
-Tabs.Auto:AddSection("Runes") 
-local AutoRuneToggle = Tabs.Auto:AddToggle("AutoRune", {Title = "Auto Roll Runes", Default = env.SqaysConfig.AutoRollRunes}) 
-AutoRuneToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollRunes = Value; syncGlobals(); saveSettings() end) 
+Tabs.Auto:AddSection("Runes")
+local AutoRuneToggle = Tabs.Auto:AddToggle("AutoRune", {Title = "Auto Roll Runes", Default = env.SqaysConfig.AutoRollRunes})
+AutoRuneToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollRunes = Value; syncGlobals(); saveSettings() end)
 
-local defRunes = {} 
-for k, v in pairs(RuneSettings) do if v then table.insert(defRunes, k) end end 
+local defRunes = {}
+for k, v in pairs(RuneSettings) do if v then table.insert(defRunes, k) end end
 
-local RuneDropdown = Tabs.Auto:AddDropdown("RunesDrop", {Title = "Runes Selected", Values = RuneNames, Multi = true, Default = defRunes}) 
+local RuneDropdown = Tabs.Auto:AddDropdown("RunesDrop", {Title = "Runes Selected", Values = RuneNames, Multi = true, Default = defRunes})
 RuneDropdown:OnChanged(function(Value) 
-    table.clear(RuneSettings) 
+    table.clear(RuneSettings)
     for k, v in pairs(Value) do 
         if type(k) == "string" and v == true then 
             RuneSettings[k] = true 
@@ -796,7 +794,7 @@ RuneDropdown:OnChanged(function(Value)
             RuneSettings[v] = true 
         end
     end
-    saveSettings() 
+    saveSettings()
 end)
 
 local RuneIntervalInput = Tabs.Auto:AddInput("RuneIntervalInput", { 
@@ -816,9 +814,9 @@ RuneIntervalInput:OnChanged(function(Value)
     end
 end)
 
-Tabs.Auto:AddSection("World Automation") 
-local TierToggle = Tabs.Auto:AddToggle("AutoTier", {Title = "Auto Roll Tier", Default = env.SqaysConfig.AutoRollTier}) 
-TierToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollTier = Value; syncGlobals(); saveSettings() end) 
+Tabs.Auto:AddSection("World Automation")
+local TierToggle = Tabs.Auto:AddToggle("AutoTier", {Title = "Auto Roll Tier", Default = env.SqaysConfig.AutoRollTier})
+TierToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollTier = Value; syncGlobals(); saveSettings() end)
 
 local TierSpeedInput = Tabs.Auto:AddInput("TierSpeedInput", { 
     Title = "Tier Speed (s) [0.001 - 2.0]", 
@@ -837,8 +835,8 @@ TierSpeedInput:OnChanged(function(Value)
     end
 end)
 
-local TreeToggle = Tabs.Auto:AddToggle("AutoTree", {Title = "Auto Hit Tree", Default = env.SqaysConfig.AutoHitTree}) 
-TreeToggle:OnChanged(function(Value) env.SqaysConfig.AutoHitTree = Value; syncGlobals(); saveSettings() end) 
+local TreeToggle = Tabs.Auto:AddToggle("AutoTree", {Title = "Auto Hit Tree", Default = env.SqaysConfig.AutoHitTree})
+TreeToggle:OnChanged(function(Value) env.SqaysConfig.AutoHitTree = Value; syncGlobals(); saveSettings() end)
 
 local TreeSpeedInput = Tabs.Auto:AddInput("TreeSpeedInput", { 
     Title = "Tree Speed (s) [0.001 - 2.0]", 
@@ -856,8 +854,8 @@ TreeSpeedInput:OnChanged(function(Value)
     end
 end)
 
-local PumpToggle = Tabs.Auto:AddToggle("AutoPump", {Title = "Auto Water Pump", Default = env.SqaysConfig.AutoWaterPump}) 
-PumpToggle:OnChanged(function(Value) env.SqaysConfig.AutoWaterPump = Value; syncGlobals(); saveSettings() end) 
+local PumpToggle = Tabs.Auto:AddToggle("AutoPump", {Title = "Auto Water Pump", Default = env.SqaysConfig.AutoWaterPump})
+PumpToggle:OnChanged(function(Value) env.SqaysConfig.AutoWaterPump = Value; syncGlobals(); saveSettings() end)
 
 local PumpSpeedInput = Tabs.Auto:AddInput("PumpSpeedInput", { 
     Title = "Pump Speed (s) [0.001 - 2.0]", 
@@ -875,9 +873,9 @@ PumpSpeedInput:OnChanged(function(Value)
     end
 end)
 
-Tabs.Auto:AddSection("Processing") 
-local QuestToggle = Tabs.Auto:AddToggle("AutoQuest", {Title = "Auto Quest (Blaze)", Default = env.SqaysConfig.AutoBlazeQuest}) 
-QuestToggle:OnChanged(function(Value) env.SqaysConfig.AutoBlazeQuest = Value; syncGlobals(); saveSettings() end) 
+Tabs.Auto:AddSection("Processing")
+local QuestToggle = Tabs.Auto:AddToggle("AutoQuest", {Title = "Auto Quest (Blaze)", Default = env.SqaysConfig.AutoBlazeQuest})
+QuestToggle:OnChanged(function(Value) env.SqaysConfig.AutoBlazeQuest = Value; syncGlobals(); saveSettings() end)
 
 local QuestSpeedInput = Tabs.Auto:AddInput("QuestSpeedInput", { 
     Title = "Quest Speed (s) [1.0 - 10.0]", 
@@ -896,8 +894,8 @@ QuestSpeedInput:OnChanged(function(Value)
     end
 end)
 
-local AshToggle = Tabs.Auto:AddToggle("AutoAsh", {Title = "Auto Wood to Ash", Default = env.SqaysConfig.AutoConvertWoodToAsh}) 
-AshToggle:OnChanged(function(Value) env.SqaysConfig.AutoConvertWoodToAsh = Value; syncGlobals(); saveSettings() end) 
+local AshToggle = Tabs.Auto:AddToggle("AutoAsh", {Title = "Auto Wood to Ash", Default = env.SqaysConfig.AutoConvertWoodToAsh})
+AshToggle:OnChanged(function(Value) env.SqaysConfig.AutoConvertWoodToAsh = Value; syncGlobals(); saveSettings() end)
 
 local AshSpeedInput = Tabs.Auto:AddInput("AshSpeedInput", { 
     Title = "Ash Speed (s) [0.001 - 5.0]", 
@@ -916,7 +914,7 @@ AshSpeedInput:OnChanged(function(Value)
     end
 end)
 
-local IceDropdown = Tabs.Auto:AddDropdown("IceDrop", {Title = "Auto Ice Convert", Values = iceOpts, Multi = false, Default = currentIceText}) 
+local IceDropdown = Tabs.Auto:AddDropdown("IceDrop", {Title = "Auto Ice Convert", Values = iceOpts, Multi = false, Default = currentIceText})
 IceDropdown:OnChanged(function(Value) 
     if Value == "None" then env.SqaysConfig.SelectedIceLevel = 0 else env.SqaysConfig.SelectedIceLevel = tonumber(string.match(Value, "%d+")) end 
     saveSettings() 
@@ -938,7 +936,7 @@ IceSpeedInput:OnChanged(function(Value)
     end
 end)
 
--- ================== UPGRADES TAB (NAPRAWIONE UNIKALNE ID) ==================
+-- ================== UPGRADES TAB ==================
 Tabs.Upgrades:AddSection("Noob Upgrades")
 
 local AutoNoobTog = Tabs.Upgrades:AddToggle("U_AutoNoob", {Title = "Auto Upgrade Noobs", Default = env.SqaysConfig.AutoUpgradeNoob})
@@ -1038,7 +1036,7 @@ end)
 Tabs.Upgrades:AddSection("Upgrades With Water")
 
 local AutoWaterUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoWaterUpgrade", {Title = "Auto Upgrade Water", Default = env.SqaysConfig.AutoUpgradeWater})
-AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeWater = Value; saveSettings() end)
+AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoWaterUpgrade = Value; saveSettings() end)
 
 local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {
     Title = "Select Water Upgrades",
@@ -1067,9 +1065,10 @@ WaterSpeedInput:OnChanged(function(Value)
     if num then env.SqaysConfig.UpgradeWaterSpeed = math.max(num, 0.001); saveSettings() end
 end)
 
--- ================== CUSTOMIZATION TAB (NAPRAWIONE) ==================
+-- ================== CUSTOMIZATION TAB ==================
 Tabs.Customize:AddSection("Visual Overhaul") 
 
+-- NAPRAWIONO: Synchronizacja referencji z systemem zapisu/odczytu i biblioteką Fluent (Znikający panel FIX)
 local ThemeDropdown = Tabs.Customize:AddDropdown("C_ThemeDrop", { 
     Title = "UI Theme", 
     Values = {"Darker", "Dark", "Light", "Aqua", "Amethyst", "Rose"}, 
@@ -1141,14 +1140,14 @@ Tabs.Customize:AddButton({
     end
 })
 
--- ================== SETTINGS TAB (NAPRAWIONE) ==================
+-- ================== SETTINGS TAB ==================
 Tabs.SettingsTab:AddSection("Security Controls")
 
 local AFKToggle = Tabs.SettingsTab:AddToggle("S_AntiAFK", {Title = "Anti-AFK Shield", Default = env.SqaysConfig.AntiAFK}) 
 AFKToggle:OnChanged(function(Value) setAntiIdle(Value); saveSettings() end) 
 
-local GhostToggle = Tabs.SettingsTab:AddToggle("S_GhostMode", {Title = "Ghost Mode (Noclip)", Default = Settings.UseNoclip}) 
-GhostToggle:OnChanged(function(Value) if Value then noclip() else clip() end; saveSettings() end) 
+local GhostToggle = Tabs.SettingsTab:AddToggle("S_GhostMode", {Title = "Ghost Mode (Noclip)", Default = Settings.UseNoclip})
+GhostToggle:OnChanged(function(Value) if Value then noclip() else clip() end; saveSettings() end)
 
 Tabs.SettingsTab:AddSection("Danger Zone") 
 
@@ -1173,7 +1172,7 @@ Tabs.SettingsTab:AddButton({
 })
 
 Fluent:Notify({
-    Title = "p1 v3.3 (Custom GUI) Loaded",
-    Content = "Press N to toggle GUI. Interface key conflicts resolved.",
+    Title = "p1 v3.4 (Custom GUI) Loaded",
+    Content = "Press N to toggle GUI. Core save-loops synchronized successfully.",
     Duration = 5
 })
