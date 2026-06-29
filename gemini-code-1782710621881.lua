@@ -1,4 +1,4 @@
--- p1_v3.4.lua - Rebirth Engine - Modern Modular UI Framework [Base v1.7 + Core Stability Fix + Customization Overhaul + Input Fields + Expanded Layout + Quad Loop + Hybrid Movement System + Full Upgrades Integration + Core Save/Load Memory Fix]
+-- p1_v3.5.lua - Rebirth Engine - Modern Modular UI Framework [Base v1.7 + Core Stability Fix + Customization Overhaul + Input Fields + Expanded Layout + Quad Loop + Hybrid Movement System + Full Upgrades Integration + Silent Crash/Icon Fix]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -29,7 +29,7 @@ env.SqaysConfig.SelectedIceLevel = env.SqaysConfig.SelectedIceLevel or 0
 env.SqaysConfig.MiningTarget = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite + Ruby Loop"
 env.SqaysConfig.MovementMethod = env.SqaysConfig.MovementMethod or "Walking"
 
--- Konfiguracja Ulepszeń (Upgrades Storage)
+-- Konfiguracja Ulepszen (Upgrades Storage)
 env.SqaysConfig.AutoUpgradeNoob = env.SqaysConfig.AutoUpgradeNoob or false
 env.SqaysConfig.AutoUpgradeGems = env.SqaysConfig.AutoUpgradeGems or false
 env.SqaysConfig.AutoUpgradePlanks = env.SqaysConfig.AutoUpgradePlanks or false
@@ -177,7 +177,7 @@ local master_routes = {
     }
 }
 
--- === SYSTEMY ANALITYKI I WEBHOOKÓW ===
+-- === SYSTEMY ANALITYKI I WEBHOOKOW ===
 local function getTrendData()
     local currentHourMined = totalMined - (history5min[#history5min - 12] or history5min[1] or 0)
     local prevHourMined = (history5min[#history5min - 12] or 0) - (history5min[#history5min - 24] or 0)
@@ -214,7 +214,7 @@ local function dispatchStatsWebhook()
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
             },
-            footer = { text = "p1 v3.4" },
+            footer = { text = "p1 v3.5" },
             timestamp = DateTime.now():ToIsoDate()
         }}
     }
@@ -298,7 +298,7 @@ local function applyTextOutlines()
             for _, child in ipairs(coreGui:GetChildren()) do
                 if child:IsA("ScreenGui") then
                     for _, desc in ipairs(child:GetDescendants()) do
-                        if desc:IsA("TextLabel") and (desc.Text == "p1" or desc.Text == "p1 v3.4") then 
+                        if desc:IsA("TextLabel") and (desc.Text == "p1" or desc.Text == "p1 v3.5") then 
                             local current = desc
                             while current.Parent and current.Parent ~= child do
                                 current = current.Parent
@@ -619,12 +619,12 @@ task.spawn(function()
 end)
 
 -- ========================================================
--- HIGH-END FLUENT UI INTERFACE DESIGN "p1 v3.4"
+-- HIGH-END FLUENT UI INTERFACE DESIGN "p1 v3.5"
 -- ========================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v3.4",
+    Title = "p1 v3.5",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
@@ -633,10 +633,11 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.N
 })
 
+-- NAPRAWIONO: Bezpieczne ikony zapobiegające Crashom interfejsu (zamiana 'trending-up' na 'zap')
 local Tabs = {
     Mining = Window:AddTab({ Title = "Mining", Icon = "gem" }), 
     Auto = Window:AddTab({ Title = "Automation", Icon = "bot" }),
-    Upgrades = Window:AddTab({ Title = "Upgrades", Icon = "trending-up" }),
+    Upgrades = Window:AddTab({ Title = "Upgrades", Icon = "zap" }), 
     Customize = Window:AddTab({ Title = "Customize", Icon = "palette" }),
     SettingsTab = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
@@ -718,7 +719,7 @@ end)
 
 Tabs.Mining:AddSection("Telemetry")
 local TelemetryPara = Tabs.Mining:AddParagraph({
-    Title = "Stats (v3.4)", Content = "Waiting for execution..."
+    Title = "Stats (v3.5)", Content = "Waiting for execution..."
 })
 
 task.spawn(function()
@@ -937,16 +938,23 @@ IceSpeedInput:OnChanged(function(Value)
 end)
 
 -- ================== UPGRADES TAB ==================
+-- NAPRAWIONO: Dodano filtry dla zapobiegania wywalenia pętli wczytywania przez nieprawidłowy odczyt z JSON.
 Tabs.Upgrades:AddSection("Noob Upgrades")
 
 local AutoNoobTog = Tabs.Upgrades:AddToggle("U_AutoNoob", {Title = "Auto Upgrade Noobs", Default = env.SqaysConfig.AutoUpgradeNoob})
 AutoNoobTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeNoob = Value; saveSettings() end)
 
+local defNoobs = {}
+for k, v in pairs(env.SqaysConfig.SelectedNoobUpgrades or {}) do 
+    if type(v) == "string" then table.insert(defNoobs, v) 
+    elseif type(k) == "string" and v == true then table.insert(defNoobs, k) end 
+end
+
 local NoobDrop = Tabs.Upgrades:AddDropdown("U_NoobTypes", {
     Title = "Select Noob Types",
     Values = {"Fisherman", "Knight", "Explorer", "Magician"},
     Multi = true,
-    Default = env.SqaysConfig.SelectedNoobUpgrades or {}
+    Default = defNoobs
 })
 NoobDrop:OnChanged(function(Value)
     table.clear(env.SqaysConfig.SelectedNoobUpgrades)
@@ -974,11 +982,17 @@ Tabs.Upgrades:AddSection("Upgrades With Gems")
 local AutoGemUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoGemUpgrade", {Title = "Auto Upgrade Gems", Default = env.SqaysConfig.AutoUpgradeGems})
 AutoGemUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeGems = Value; saveSettings() end)
 
+local defGemsUpgrades = {}
+for k, v in pairs(env.SqaysConfig.SelectedGemUpgrades or {}) do 
+    if type(v) == "string" then table.insert(defGemsUpgrades, v) 
+    elseif type(k) == "string" and v == true then table.insert(defGemsUpgrades, k) end 
+end
+
 local GemUpgradeDrop = Tabs.Upgrades:AddDropdown("U_GemUpgrades", {
     Title = "Select Gem Upgrades",
     Values = {"MoreGems", "MoreOreStats", "MoreOof"},
     Multi = true,
-    Default = env.SqaysConfig.SelectedGemUpgrades or {}
+    Default = defGemsUpgrades
 })
 GemUpgradeDrop:OnChanged(function(Value)
     table.clear(env.SqaysConfig.SelectedGemUpgrades)
@@ -1006,11 +1020,17 @@ Tabs.Upgrades:AddSection("Upgrades With Planks")
 local AutoPlankUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoPlankUpgrade", {Title = "Auto Upgrade Planks", Default = env.SqaysConfig.AutoUpgradePlanks})
 AutoPlankUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradePlanks = Value; saveSettings() end)
 
+local defPlanks = {}
+for k, v in pairs(env.SqaysConfig.SelectedPlankUpgrades or {}) do 
+    if type(v) == "string" then table.insert(defPlanks, v) 
+    elseif type(k) == "string" and v == true then table.insert(defPlanks, k) end 
+end
+
 local PlankUpgradeDrop = Tabs.Upgrades:AddDropdown("U_PlankUpgrades", {
     Title = "Select Plank Upgrades",
     Values = {"WaterFromPlanks", "MorePlanks"},
     Multi = true,
-    Default = env.SqaysConfig.SelectedPlankUpgrades or {}
+    Default = defPlanks
 })
 PlankUpgradeDrop:OnChanged(function(Value)
     table.clear(env.SqaysConfig.SelectedPlankUpgrades)
@@ -1036,13 +1056,19 @@ end)
 Tabs.Upgrades:AddSection("Upgrades With Water")
 
 local AutoWaterUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoWaterUpgrade", {Title = "Auto Upgrade Water", Default = env.SqaysConfig.AutoUpgradeWater})
-AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoWaterUpgrade = Value; saveSettings() end)
+AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeWater = Value; saveSettings() end)
+
+local defWater = {}
+for k, v in pairs(env.SqaysConfig.SelectedWaterUpgrades or {}) do 
+    if type(v) == "string" then table.insert(defWater, v) 
+    elseif type(k) == "string" and v == true then table.insert(defWater, k) end 
+end
 
 local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {
     Title = "Select Water Upgrades",
     Values = {"MoreGems", "MorePlanks"},
     Multi = true,
-    Default = env.SqaysConfig.SelectedWaterUpgrades or {}
+    Default = defWater
 })
 WaterUpgradeDrop:OnChanged(function(Value)
     table.clear(env.SqaysConfig.SelectedWaterUpgrades)
@@ -1068,7 +1094,6 @@ end)
 -- ================== CUSTOMIZATION TAB ==================
 Tabs.Customize:AddSection("Visual Overhaul") 
 
--- NAPRAWIONO: Synchronizacja referencji z systemem zapisu/odczytu i biblioteką Fluent (Znikający panel FIX)
 local ThemeDropdown = Tabs.Customize:AddDropdown("C_ThemeDrop", { 
     Title = "UI Theme", 
     Values = {"Darker", "Dark", "Light", "Aqua", "Amethyst", "Rose"}, 
@@ -1172,7 +1197,7 @@ Tabs.SettingsTab:AddButton({
 })
 
 Fluent:Notify({
-    Title = "p1 v3.4 (Custom GUI) Loaded",
-    Content = "Press N to toggle GUI. Core save-loops synchronized successfully.",
+    Title = "p1 v3.5 (Custom GUI) Loaded",
+    Content = "Press N to toggle GUI. Icon conflicts successfully bypassed.",
     Duration = 5
 })
