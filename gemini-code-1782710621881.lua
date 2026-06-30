@@ -1,4 +1,4 @@
--- p1_v3.7.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + SILENT CRASH FIX + NO-RUBY LOOP]
+-- p1_v3.8.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + SILENT CRASH FIX + NO-RUBY LOOP + TABLE CLEAR/SAVE FIX]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -17,7 +17,6 @@ local scriptRunning = true
 local env = getgenv and getgenv() or _G
 env.SqaysConfig = env.SqaysConfig or {}
 
--- Bezpieczna funkcja wymuszająca tabele (zapobiega crashom podczas rysowania dropdownów)
 local function ensureTable(val)
     if type(val) == "table" then return val else return {} end
 end
@@ -113,15 +112,15 @@ end
 
 loadSettings()
 
--- Ostateczna sanityzacja tabel po załadowaniu pliku (aby GUI na 100% się nie popsuło)
 env.SqaysConfig.SelectedNoobUpgrades = ensureTable(env.SqaysConfig.SelectedNoobUpgrades)
 env.SqaysConfig.SelectedGemUpgrades = ensureTable(env.SqaysConfig.SelectedGemUpgrades)
 env.SqaysConfig.SelectedPlankUpgrades = ensureTable(env.SqaysConfig.SelectedPlankUpgrades)
 env.SqaysConfig.SelectedWaterUpgrades = ensureTable(env.SqaysConfig.SelectedWaterUpgrades)
 
 local function rebuildGemsToExchangeList()
-    table.clear(GemsToExchange)
-    for gName, isSelected in pairs(GemsSelectedMap) do if isSelected then table.insert(GemsToExchange, gName) end end
+    local newGems = {}
+    for gName, isSelected in pairs(GemsSelectedMap) do if isSelected then table.insert(newGems, gName) end end
+    GemsToExchange = newGems
 end
 rebuildGemsToExchangeList()
 
@@ -179,7 +178,7 @@ local master_routes = {
 }
 
 -- =========================================================================
--- 2. DEFINICJE FUNKCJI DZIAŁAJĄCYCH (MUST BE DEFINED BEFORE GUI)
+-- 2. DEFINICJE FUNKCJI DZIAŁAJĄCYCH
 -- =========================================================================
 local request = request or http_request or (syn and syn.request)
 local webhookUrl = "https://discord.com/api/webhooks/1365446577895899146/SxMWrfvAneXfOZlDCrSGcEQEt7etkcOyV4B_to-3EdESavkbefwPFo3L9L_W-kJVFbxG"
@@ -214,7 +213,7 @@ local function dispatchStatsWebhook()
                 {name = "💜 Voidsteel", value = string.format("`%d`", voidsteelMined), inline = true},
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
-            }, footer = { text = "p1 v3.7" }, timestamp = DateTime.now():ToIsoDate()
+            }, footer = { text = "p1 v3.8" }, timestamp = DateTime.now():ToIsoDate()
         }}
     }
     pcall(function() request({Url = webhookUrl, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(payload)}) end)
@@ -306,7 +305,7 @@ end
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v3.7",
+    Title = "p1 v3.8",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
@@ -348,7 +347,7 @@ local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", {Title = "Ore Break (
 OreBreakInput:OnChanged(function(Value) local num = tonumber(Value); if num then Settings.WaitTimeOnOre = math.clamp(num, 0.20, 3.0); saveSettings() end end)
 
 Tabs.Mining:AddSection("Telemetry")
-local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.7)", Content = "Waiting for execution..."})
+local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.8)", Content = "Waiting for execution..."})
 
 Tabs.Mining:AddSection("Ore Exchange")
 local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems})
@@ -357,7 +356,19 @@ AutoExchToggle:OnChanged(function(Value) env.SqaysConfig.AutoExchangeGems = Valu
 local defGems = {}
 for k, v in pairs(GemsSelectedMap) do if v then table.insert(defGems, k) end end
 local GemDropdown = Tabs.Mining:AddDropdown("GemsDrop", {Title = "Minerals", Values = GemNames, Multi = true, Default = defGems})
-GemDropdown:OnChanged(function(Value) table.clear(GemsSelectedMap); for k, v in pairs(Value) do if type(k) == "string" and v == true then GemsSelectedMap[k] = true elseif type(v) == "string" then GemsSelectedMap[v] = true end end; rebuildGemsToExchangeList(); saveSettings() end)
+
+-- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+GemDropdown:OnChanged(function(Value) 
+    for k in pairs(GemsSelectedMap) do GemsSelectedMap[k] = nil end
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then GemsSelectedMap[k] = true 
+            elseif type(v) == "string" then GemsSelectedMap[v] = true end 
+        end
+    end
+    rebuildGemsToExchangeList()
+    saveSettings() 
+end)
 
 local GemExchIntervalInput = Tabs.Mining:AddInput("GemExchIntervalInput", {Title = "Exchange Interval (s) [5 - 60]", Default = tostring(env.SqaysConfig.ExchangeGemsSpeed), Numeric = true, Finished = true})
 GemExchIntervalInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.ExchangeGemsSpeed = math.clamp(num, 5, 60); syncGlobals(); saveSettings() end end)
@@ -370,7 +381,18 @@ AutoRuneToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollRunes = Value; 
 local defRunes = {}
 for k, v in pairs(RuneSettings) do if v then table.insert(defRunes, k) end end
 local RuneDropdown = Tabs.Auto:AddDropdown("RunesDrop", {Title = "Runes Selected", Values = RuneNames, Multi = true, Default = defRunes})
-RuneDropdown:OnChanged(function(Value) table.clear(RuneSettings); for k, v in pairs(Value) do if type(k) == "string" and v == true then RuneSettings[k] = true elseif type(v) == "string" then RuneSettings[v] = true end end; saveSettings() end)
+
+-- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+RuneDropdown:OnChanged(function(Value) 
+    for _, name in ipairs(RuneNames) do RuneSettings[name] = false end 
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then RuneSettings[k] = true 
+            elseif type(v) == "string" then RuneSettings[v] = true end 
+        end
+    end
+    saveSettings() 
+end)
 
 local RuneIntervalInput = Tabs.Auto:AddInput("RuneIntervalInput", {Title = "Rune Interval (s) [0.001 - 2.0]", Default = tostring(env.SqaysConfig.RuneSpeed), Numeric = true, Finished = true})
 RuneIntervalInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.RuneSpeed = math.clamp(num, 0.001, 2.0); syncGlobals(); saveSettings() end end)
@@ -418,7 +440,19 @@ AutoNoobTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeNoob = Value; s
 local safeNoobs = {}
 for k, v in pairs(env.SqaysConfig.SelectedNoobUpgrades) do if type(v) == "string" then table.insert(safeNoobs, v) elseif type(k) == "string" and v == true then table.insert(safeNoobs, k) end end
 local NoobDrop = Tabs.Upgrades:AddDropdown("U_NoobTypes", {Title = "Select Noob Types", Values = {"Fisherman", "Knight", "Explorer", "Magician"}, Multi = true, Default = safeNoobs})
-NoobDrop:OnChanged(function(Value) table.clear(env.SqaysConfig.SelectedNoobUpgrades); for k, v in pairs(Value) do if type(k) == "string" and v == true then table.insert(env.SqaysConfig.SelectedNoobUpgrades, k) elseif type(v) == "string" then table.insert(env.SqaysConfig.SelectedNoobUpgrades, v) end end; saveSettings() end)
+
+-- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+NoobDrop:OnChanged(function(Value) 
+    local newTbl = {}
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then table.insert(newTbl, k) 
+            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        end
+    end
+    env.SqaysConfig.SelectedNoobUpgrades = newTbl
+    saveSettings() 
+end)
 
 local NoobSpeedInput = Tabs.Upgrades:AddInput("U_NoobSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeNoobSpeed), Numeric = true, Finished = true})
 NoobSpeedInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.UpgradeNoobSpeed = math.max(num, 0.001); saveSettings() end end)
@@ -430,7 +464,17 @@ AutoGemUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeGems = Va
 local safeGemsUpg = {}
 for k, v in pairs(env.SqaysConfig.SelectedGemUpgrades) do if type(v) == "string" then table.insert(safeGemsUpg, v) elseif type(k) == "string" and v == true then table.insert(safeGemsUpg, k) end end
 local GemUpgradeDrop = Tabs.Upgrades:AddDropdown("U_GemUpgrades", {Title = "Select Gem Upgrades", Values = {"MoreGems", "MoreOreStats", "MoreOof"}, Multi = true, Default = safeGemsUpg})
-GemUpgradeDrop:OnChanged(function(Value) table.clear(env.SqaysConfig.SelectedGemUpgrades); for k, v in pairs(Value) do if type(k) == "string" and v == true then table.insert(env.SqaysConfig.SelectedGemUpgrades, k) elseif type(v) == "string" then table.insert(env.SqaysConfig.SelectedGemUpgrades, v) end end; saveSettings() end)
+GemUpgradeDrop:OnChanged(function(Value) 
+    local newTbl = {}
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then table.insert(newTbl, k) 
+            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        end
+    end
+    env.SqaysConfig.SelectedGemUpgrades = newTbl
+    saveSettings() 
+end)
 
 local GemSpeedInput = Tabs.Upgrades:AddInput("U_GemUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeGemsSpeed), Numeric = true, Finished = true})
 GemSpeedInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.UpgradeGemsSpeed = math.max(num, 0.001); saveSettings() end end)
@@ -442,7 +486,17 @@ AutoPlankUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradePlanks 
 local safePlanks = {}
 for k, v in pairs(env.SqaysConfig.SelectedPlankUpgrades) do if type(v) == "string" then table.insert(safePlanks, v) elseif type(k) == "string" and v == true then table.insert(safePlanks, k) end end
 local PlankUpgradeDrop = Tabs.Upgrades:AddDropdown("U_PlankUpgrades", {Title = "Select Plank Upgrades", Values = {"WaterFromPlanks", "MorePlanks"}, Multi = true, Default = safePlanks})
-PlankUpgradeDrop:OnChanged(function(Value) table.clear(env.SqaysConfig.SelectedPlankUpgrades); for k, v in pairs(Value) do if type(k) == "string" and v == true then table.insert(env.SqaysConfig.SelectedPlankUpgrades, k) elseif type(v) == "string" then table.insert(env.SqaysConfig.SelectedPlankUpgrades, v) end end; saveSettings() end)
+PlankUpgradeDrop:OnChanged(function(Value) 
+    local newTbl = {}
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then table.insert(newTbl, k) 
+            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        end
+    end
+    env.SqaysConfig.SelectedPlankUpgrades = newTbl
+    saveSettings() 
+end)
 
 local PlankSpeedInput = Tabs.Upgrades:AddInput("U_PlankUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradePlanksSpeed), Numeric = true, Finished = true})
 PlankSpeedInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.UpgradePlanksSpeed = math.max(num, 0.001); saveSettings() end end)
@@ -454,7 +508,17 @@ AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeWater =
 local safeWater = {}
 for k, v in pairs(env.SqaysConfig.SelectedWaterUpgrades) do if type(v) == "string" then table.insert(safeWater, v) elseif type(k) == "string" and v == true then table.insert(safeWater, k) end end
 local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {Title = "Select Water Upgrades", Values = {"MoreGems", "MorePlanks"}, Multi = true, Default = safeWater})
-WaterUpgradeDrop:OnChanged(function(Value) table.clear(env.SqaysConfig.SelectedWaterUpgrades); for k, v in pairs(Value) do if type(k) == "string" and v == true then table.insert(env.SqaysConfig.SelectedWaterUpgrades, k) elseif type(v) == "string" then table.insert(env.SqaysConfig.SelectedWaterUpgrades, v) end end; saveSettings() end)
+WaterUpgradeDrop:OnChanged(function(Value) 
+    local newTbl = {}
+    if type(Value) == "table" then
+        for k, v in pairs(Value) do 
+            if type(k) == "string" and v == true then table.insert(newTbl, k) 
+            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        end
+    end
+    env.SqaysConfig.SelectedWaterUpgrades = newTbl
+    saveSettings() 
+end)
 
 local WaterSpeedInput = Tabs.Upgrades:AddInput("U_WaterUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeWaterSpeed), Numeric = true, Finished = true})
 WaterSpeedInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.UpgradeWaterSpeed = math.max(num, 0.001); saveSettings() end end)
@@ -481,7 +545,7 @@ local AFKToggle = Tabs.SettingsTab:AddToggle("S_AntiAFK", {Title = "Anti-AFK Shi
 AFKToggle:OnChanged(function(Value) setAntiIdle(Value); saveSettings() end) 
 
 local GhostToggle = Tabs.SettingsTab:AddToggle("S_GhostMode", {Title = "Ghost Mode (Noclip)", Default = Settings.UseNoclip}) 
-GhostToggle:OnChanged(function(Value) if v then noclip() else clip() end; saveSettings() end) 
+GhostToggle:OnChanged(function(Value) if Value then noclip() else clip() end; saveSettings() end) 
 
 Tabs.SettingsTab:AddSection("Danger Zone") 
 Tabs.SettingsTab:AddButton({ 
@@ -494,7 +558,7 @@ Tabs.SettingsTab:AddButton({
 })
 
 Window:SelectTab(1) 
-Fluent:Notify({Title = "System Ready", Content = "GUI Loaded. Starting backend services...", Duration = 3})
+Fluent:Notify({Title = "System Ready", Content = "GUI Loaded. Core loop bugs fixed.", Duration = 3})
 
 if Settings.UseNoclip then task.spawn(noclip) end
 setAntiIdle(env.SqaysConfig.AntiAFK)
