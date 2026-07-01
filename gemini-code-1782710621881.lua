@@ -1,4 +1,4 @@
--- p1_v4.0.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST + ZOMBIE THREAD KILL-SWITCH + JSON SANITIZATION + WORLD CUP UPDATE]
+-- p1_v4.1.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST + ZOMBIE THREAD KILL-SWITCH + JSON SANITIZATION + WORLD CUP SYNTAX FIX]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -99,7 +99,7 @@ local totalMined, minedInLast5Mins, display5MinMined, estPerHour = 0, 0, 0, 0
 local celestiumMined, voidsteelMined, aetheriteMined, rubyMined = 0, 0, 0, 0
 local runTime, history5min = 0, {}
 
-local RuneNames = {"Basic", "Super", "Advanced", "Cosmic Prism", "Hacker", "Snowy", "Deepcore", "Football"} -- Dodano nową runę
+local RuneNames = {"Basic", "Super", "Advanced", "Cosmic Prism", "Hacker", "Snowy", "Deepcore", "Football"}
 local GemNames = {"All", "Coal", "Iron", "Sliver", "Gold", "Platinum", "Titanium", "Emerald", "Diamond", "Opal", "Jade", "Amber", "Topaz", "Ruby", "Amethyst", "Quartz", "Sapphire", "Uranium", "Crystal", "Obsidian"}
 
 local saveFileName = "p1_Rebirth_Storage.json"
@@ -217,7 +217,7 @@ local function dispatchStatsWebhook()
                 {name = "💜 Voidsteel", value = string.format("`%d`", voidsteelMined), inline = true},
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
-            }, footer = { text = "p1 v4.0" }, timestamp = DateTime.now():ToIsoDate()
+            }, footer = { text = "p1 v4.1" }, timestamp = DateTime.now():ToIsoDate()
         }}
     }
     pcall(function() request({Url = webhookUrl, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(payload)}) end)
@@ -309,7 +309,7 @@ end
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v4.0",
+    Title = "p1 v4.1",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
@@ -318,7 +318,6 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.N
 })
 
--- Dodane białe emotikony zgodnie ze stylem
 local Tabs = {
     Mining = Window:AddTab({ Title = "⛏️ Mining" }), 
     Auto = Window:AddTab({ Title = "⚙️ Automation" }),
@@ -353,7 +352,7 @@ local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", {Title = "Ore Break (
 OreBreakInput:OnChanged(function(Value) local num = tonumber(Value); if num then Settings.WaitTimeOnOre = math.clamp(num, 0.20, 3.0); saveSettings() end end)
 
 Tabs.Mining:AddSection("Telemetry")
-local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v4.0)", Content = "Waiting for execution..."})
+local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v4.1)", Content = "Waiting for execution..."})
 
 Tabs.Mining:AddSection("Ore Exchange")
 local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems})
@@ -366,15 +365,10 @@ local GemDropdown = Tabs.Mining:AddDropdown("GemsDrop", {Title = "Minerals", Val
 GemDropdown:OnChanged(function(Value) 
     if type(Value) == "table" then
         for _, name in ipairs(GemNames) do
-            if Value[name] == true or Value[name] == name then
-                env.SqaysConfig.GemsSelectedMap[name] = true
-            else
-                env.SqaysConfig.GemsSelectedMap[name] = false
-            end
+            if Value[name] == true or Value[name] == name then env.SqaysConfig.GemsSelectedMap[name] = true else env.SqaysConfig.GemsSelectedMap[name] = false end
         end
     end
-    rebuildGemsToExchangeList()
-    saveSettings() 
+    rebuildGemsToExchangeList(); saveSettings() 
 end)
 
 local GemExchIntervalInput = Tabs.Mining:AddInput("GemExchIntervalInput", {Title = "Exchange Interval (s) [5 - 60]", Default = tostring(env.SqaysConfig.ExchangeGemsSpeed), Numeric = true, Finished = true})
@@ -392,11 +386,7 @@ local RuneDropdown = Tabs.Auto:AddDropdown("RunesDrop", {Title = "Runes Selected
 RuneDropdown:OnChanged(function(Value) 
     if type(Value) == "table" then
         for _, name in ipairs(RuneNames) do
-            if Value[name] == true or Value[name] == name then
-                env.SqaysConfig.RuneSettings[name] = true
-            else
-                env.SqaysConfig.RuneSettings[name] = false
-            end
+            if Value[name] == true or Value[name] == name then env.SqaysConfig.RuneSettings[name] = true else env.SqaysConfig.RuneSettings[name] = false end
         end
     end
     saveSettings() 
@@ -451,12 +441,9 @@ local NoobDrop = Tabs.Upgrades:AddDropdown("U_NoobTypes", {Title = "Select Noob 
 NoobDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for _, name in ipairs({"Fisherman", "Knight", "Explorer", "Magician"}) do
-            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
-        end
+        for _, name in ipairs({"Fisherman", "Knight", "Explorer", "Magician"}) do if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end end
     end
-    env.SqaysConfig.SelectedNoobUpgrades = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedNoobUpgrades = newTbl; saveSettings() 
 end)
 
 local NoobSpeedInput = Tabs.Upgrades:AddInput("U_NoobSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeNoobSpeed), Numeric = true, Finished = true})
@@ -472,12 +459,9 @@ local GemUpgradeDrop = Tabs.Upgrades:AddDropdown("U_GemUpgrades", {Title = "Sele
 GemUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for _, name in ipairs({"MoreGems", "MoreOreStats", "MoreOof"}) do
-            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
-        end
+        for _, name in ipairs({"MoreGems", "MoreOreStats", "MoreOof"}) do if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end end
     end
-    env.SqaysConfig.SelectedGemUpgrades = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedGemUpgrades = newTbl; saveSettings() 
 end)
 
 local GemSpeedInput = Tabs.Upgrades:AddInput("U_GemUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeGemsSpeed), Numeric = true, Finished = true})
@@ -493,12 +477,9 @@ local PlankUpgradeDrop = Tabs.Upgrades:AddDropdown("U_PlankUpgrades", {Title = "
 PlankUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for _, name in ipairs({"WaterFromPlanks", "MorePlanks"}) do
-            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
-        end
+        for _, name in ipairs({"WaterFromPlanks", "MorePlanks"}) do if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end end
     end
-    env.SqaysConfig.SelectedPlankUpgrades = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedPlankUpgrades = newTbl; saveSettings() 
 end)
 
 local PlankSpeedInput = Tabs.Upgrades:AddInput("U_PlankUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradePlanksSpeed), Numeric = true, Finished = true})
@@ -514,12 +495,9 @@ local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {Title = "
 WaterUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for _, name in ipairs({"MoreGems", "MorePlanks"}) do
-            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
-        end
+        for _, name in ipairs({"MoreGems", "MorePlanks"}) do if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end end
     end
-    env.SqaysConfig.SelectedWaterUpgrades = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedWaterUpgrades = newTbl; saveSettings() 
 end)
 
 local WaterSpeedInput = Tabs.Upgrades:AddInput("U_WaterUpgradeSpeed", {Title = "Upgrade Speed (s)", Default = tostring(env.SqaysConfig.UpgradeWaterSpeed), Numeric = true, Finished = true})
@@ -556,8 +534,7 @@ WCNoobDrop:OnChanged(function(Value)
             if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
-    env.SqaysConfig.SelectedWCNoobUpgrades = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedWCNoobUpgrades = newTbl; saveSettings() 
 end)
 
 local WCNoobSpeedInput = Tabs.WorldCup:AddInput("W_WCNoobSpeed", {Title = "WC Noob Speed (s)", Default = tostring(env.SqaysConfig.UpgradeWCNoobSpeed), Numeric = true, Finished = true})
@@ -587,8 +564,7 @@ GoalMultisDrop:OnChanged(function(Value)
             if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
-    env.SqaysConfig.SelectedGoalMultis = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedGoalMultis = newTbl; saveSettings() 
 end)
 
 local AutoGoalSpeedTog = Tabs.WorldCup:AddToggle("W_AutoGoalSpeed", {Title = "Auto Goal Speed", Default = env.SqaysConfig.AutoGoalSpeed})
@@ -610,8 +586,7 @@ UnlockNoobsDrop:OnChanged(function(Value)
             if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
-    env.SqaysConfig.SelectedUnlockNoobs = newTbl
-    saveSettings() 
+    env.SqaysConfig.SelectedUnlockNoobs = newTbl; saveSettings() 
 end)
 
 local AutoPrismTog = Tabs.WorldCup:AddToggle("W_AutoPrismRuneBulk", {Title = "Auto Prism Rune Bulk", Default = env.SqaysConfig.AutoPrismRuneBulk})
@@ -629,6 +604,7 @@ AutoUnlockCapsuleTog:OnChanged(function(Value) env.SqaysConfig.AutoUnlockSoccerC
 local GoalTreeSpeedInput = Tabs.WorldCup:AddInput("W_GoalTreeSpeed", {Title = "Goal Tree Speed (s)", Default = tostring(env.SqaysConfig.GoalTreeSpeed), Numeric = true, Finished = true})
 GoalTreeSpeedInput:OnChanged(function(Value) local num = tonumber(Value); if num then env.SqaysConfig.GoalTreeSpeed = math.max(num, 0.001); saveSettings() end end)
 
+
 -- ---- ZAKŁADKA 5: CUSTOMIZE ----
 Tabs.Customize:AddSection("Visual Overhaul") 
 local ThemeDropdown = Tabs.Customize:AddDropdown("C_ThemeDrop", {Title = "UI Theme", Values = {"Darker", "Dark", "Light", "Aqua", "Amethyst", "Rose"}, Multi = false, Default = Settings.UITheme})
@@ -644,6 +620,7 @@ Tabs.Customize:AddSection("Preset Management")
 local PresetInput = Tabs.Customize:AddInput("C_PresetName", {Title = "Preset Name", Default = "MyLayout", Placeholder = "Enter preset name...", Numeric = false, Finished = false})
 Tabs.Customize:AddButton({Title = "Save GUI Preset", Callback = function() local pName = PresetInput.Value; local presetData = {Theme = Settings.UITheme, Acrylic = Settings.UIAcrylic}; pcall(function() if writefile then writefile(presetFileName, HttpService:JSONEncode(presetData)) end; Fluent:Notify({Title = "Preset Saved", Content = "Layout saved.", Duration = 3}) end) end})
 Tabs.Customize:AddButton({Title = "Load GUI Preset", Callback = function() pcall(function() if readfile and isfile and isfile(presetFileName) then local pData = HttpService:JSONDecode(readfile(presetFileName)); if pData then if pData.Theme then ThemeDropdown:SetValue(pData.Theme) end; if pData.Acrylic ~= nil then AcrylicToggle:SetValue(pData.Acrylic) end; Fluent:Notify({Title = "Preset Loaded", Content = "GUI layout restored.", Duration = 3}) end end end) end})
+
 
 -- ---- ZAKŁADKA 6: SETTINGS ----
 Tabs.SettingsTab:AddSection("Security Controls")
@@ -664,71 +641,134 @@ Tabs.SettingsTab:AddButton({
 })
 
 Window:SelectTab(1) 
-Fluent:Notify({Title = "System Ready", Content = "World Cup Update Loaded.", Duration = 5})
+Fluent:Notify({Title = "System Ready", Content = "World Cup Update & Fixes Loaded.", Duration = 5})
 
 if Settings.UseNoclip then task.spawn(noclip) end
 setAntiIdle(env.SqaysConfig.AntiAFK)
 
 -- =========================================================================
--- 4. URUCHOMIENIE PĘTLI WYKONAWCZYCH
+-- 4. URUCHOMIENIE PĘTLI WYKONAWCZYCH Z KREATOREM (LOOP FACTORY)
 -- =========================================================================
+
+-- Funkcja pomocnicza: tworzy czyste i stabilne pętle automatyzacji
+local function createLoop(configFlag, speedKey, action)
+    task.spawn(function()
+        while scriptRunning and not env.p1_kill_switch do
+            if env.SqaysConfig[configFlag] then
+                local MainRemote = getMainRemote()
+                if MainRemote then
+                    pcall(function() action(MainRemote) end)
+                end
+                task.wait(env.SqaysConfig[speedKey] or 1)
+            else
+                task.wait(0.1)
+            end
+        end
+    end)
+end
+
+-- Pętle Upgrades
+createLoop("AutoUpgradeNoob", "UpgradeNoobSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedNoobUpgrades) do M:FireServer("UpgradeNoobMax", v) end
+end)
+createLoop("AutoUpgradeGems", "UpgradeGemsSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedGemUpgrades) do M:FireServer("UpgradeUpgrade", "Gem", v) end
+end)
+createLoop("AutoUpgradePlanks", "UpgradePlanksSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedPlankUpgrades) do M:FireServer("UpgradeUpgrade", "Planks", v) end
+end)
+createLoop("AutoUpgradeWater", "UpgradeWaterSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedWaterUpgrades) do M:FireServer("UpgradeUpgrade", "Water", v) end
+end)
+
+-- Pętle Automation
+createLoop("AutoRollTier", "TierSpeed", function(M) M:FireServer("RollTier") end)
+createLoop("AutoRollRunes", "RuneSpeed", function(M) 
+    for _, name in ipairs(RuneNames) do if env.SqaysConfig.RuneSettings[name] then M:FireServer("RollRune", name) end end 
+end)
+createLoop("AutoWaterPump", "WaterPumpSpeed", function(M) M:FireServer("GainWater") end)
+createLoop("AutoBlazeQuest", "BlazeQuestSpeed", function(M) M:FireServer("SetUpgradeAutomationPaused", "Fire", false); M:FireServer("Blaze") end)
+createLoop("AutoConvertWoodToAsh", "AshConvertSpeed", function(M) M:FireServer("ConvertWoodToAsh") end)
 
 task.spawn(function()
     while scriptRunning and not env.p1_kill_switch do
-        task.wait(1)
-        if runTime > 0 then estPerHour = math.floor((totalMined / runTime) * 3600) end 
-        local statusText = looping and "🟢 ACTIVE" or "🔴 PAUSED" 
-        local dispText = string.format(
-            "Status: %s\n⏱️ Last 5m: %d | 📈 Rate: %d/h\n🔋 Mined: %d | ⏳ Uptime: %dh %dm\n📊 Trend: %s\n💎 Celestium: %d | 💜 Voidsteel: %d\n💙 Aetherite: %d | ❤️ Ruby: %d",
-            statusText, display5MinMined, estPerHour, totalMined, math.floor(runTime/3600), math.floor((runTime%3600)/60), getTrendData(), celestiumMined, voidsteelMined, aetheriteMined, rubyMined
-        )
-        pcall(function() TelemetryPara:SetDesc(dispText) end)
+        if env.SqaysConfig.AutoHitTree then
+            local M = getMainRemote()
+            if M and player:FindFirstChild("FEATURES") and player.FEATURES:FindFirstChild("TREE") and player.FEATURES.TREE:FindFirstChild("IsSpawned") and player.FEATURES.TREE.IsSpawned.Value then
+                M:FireServer("HitTree")
+            end
+        end
+        task.wait(env.SqaysConfig.TreeSpeed)
     end
 end)
 
--- Pętle Upgrades
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeNoob then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedNoobUpgrades) do pcall(function() M:FireServer("UpgradeNoobMax", v) end) end end; task.wait(env.SqaysConfig.UpgradeNoobSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeGems then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedGemUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Gem", v) end) end end; task.wait(env.SqaysConfig.UpgradeGemsSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradePlanks then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedPlankUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Planks", v) end) end end; task.wait(env.SqaysConfig.UpgradePlanksSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeWater then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedWaterUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Water", v) end) end end; task.wait(env.SqaysConfig.UpgradeWaterSpeed) else task.wait(0.1) end end end)
+task.spawn(function()
+    while scriptRunning and not env.p1_kill_switch do
+        local c = env.SqaysConfig.SelectedIceLevel or 0
+        if c > 0 then
+            local M = getMainRemote()
+            if M then pcall(function() M:FireServer("PressButton", c) end) end
+        end
+        task.wait(env.SqaysConfig.IceConvertSpeed)
+    end
+end)
 
--- Pętle Automation
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoRollTier then local M = getMainRemote(); if M then M:FireServer("RollTier") end end; task.wait(env.SqaysConfig.TierSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoRollRunes then local M = getMainRemote(); if M then for _, name in ipairs(RuneNames) do if env.SqaysConfig.RuneSettings[name] then M:FireServer("RollRune", name) end end end end; task.wait(env.SqaysConfig.RuneSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoHitTree then local M = getMainRemote(); if M and player:FindFirstChild("FEATURES") and player.FEATURES:FindFirstChild("TREE") and player.FEATURES.TREE:FindFirstChild("IsSpawned") and player.FEATURES.TREE.IsSpawned.Value then M:FireServer("HitTree") end end; task.wait(env.SqaysConfig.TreeSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoWaterPump then local M = getMainRemote(); if M then M:FireServer("GainWater") end end; task.wait(env.SqaysConfig.WaterPumpSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoBlazeQuest then local M = getMainRemote(); if M then M:FireServer("SetUpgradeAutomationPaused", "Fire", false); M:FireServer("Blaze") end end; task.wait(env.SqaysConfig.BlazeQuestSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoConvertWoodToAsh then local M = getMainRemote(); if M then M:FireServer("ConvertWoodToAsh") end end; task.wait(env.SqaysConfig.AshConvertSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do local c = env.SqaysConfig.SelectedIceLevel or 0; if c > 0 then pcall(function() local M = getMainRemote(); if M then M:FireServer("PressButton", c) end end) end; task.wait(env.SqaysConfig.IceConvertSpeed) end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoExchangeGems then pcall(function() local M = getMainRemote(); if M and #env.SqaysConfig.GemsToExchange > 0 then for _, gem in ipairs(env.SqaysConfig.GemsToExchange) do if not env.SqaysConfig.AutoExchangeGems then break end; if gem == "All" then M:FireServer("ExchangeAllMinerals"); break end; local amt = 0; local c = player:FindFirstChild("CURRENCIES"); local f = c and c:FindFirstChild(gem); local a = f and f:FindFirstChild("Amount"); local v = a and a:FindFirstChild("1"); if v then amt = tonumber(v.Value) or 0 end; if amt > 0 then M:FireServer("ExchangeMineral", gem) end end end end) end; task.wait(env.SqaysConfig.ExchangeGemsSpeed) end end)
+createLoop("AutoExchangeGems", "ExchangeGemsSpeed", function(M)
+    if #env.SqaysConfig.GemsToExchange > 0 then
+        for _, gem in ipairs(env.SqaysConfig.GemsToExchange) do
+            if not env.SqaysConfig.AutoExchangeGems then break end
+            if gem == "All" then M:FireServer("ExchangeAllMinerals"); break end
+            local amt = 0
+            local c = player:FindFirstChild("CURRENCIES")
+            local f = c and c:FindFirstChild(gem)
+            local a = f and f:FindFirstChild("Amount")
+            local v = a and a:FindFirstChild("1")
+            if v then amt = tonumber(v.Value) or 0 end
+            if amt > 0 then M:FireServer("ExchangeMineral", gem) end
+        end
+    end
+end)
 
 -- Pętle WORLD CUP
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeMoreGoals then local M = getMainRemote(); if M then pcall(function() M:FireServer("UpgradeUpgradeMax", "Goals", "MoreGoals") end) end end; task.wait(env.SqaysConfig.UpgradeGoalsSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeAutoKick then local M = getMainRemote(); if M then pcall(function() M:FireServer("UpgradeUpgradeMax", "Goals", "AutoKick") end) end end; task.wait(env.SqaysConfig.UpgradeGoalsSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeRuneBulk then local M = getMainRemote(); if M then pcall(function() M:FireServer("UpgradeUpgradeMax", "Goals", "RuneBulk") end) end end; task.wait(env.SqaysConfig.UpgradeGoalsSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeRuneLuck then local M = getMainRemote(); if M then pcall(function() M:FireServer("UpgradeUpgradeMax", "Goals", "RuneLuck") end) end end; task.wait(env.SqaysConfig.UpgradeGoalsSpeed) else task.wait(0.1) end end end)
+createLoop("AutoUpgradeMoreGoals", "UpgradeGoalsSpeed", function(M) M:FireServer("UpgradeUpgradeMax", "Goals", "MoreGoals") end)
+createLoop("AutoUpgradeAutoKick", "UpgradeGoalsSpeed", function(M) M:FireServer("UpgradeUpgradeMax", "Goals", "AutoKick") end)
+createLoop("AutoUpgradeRuneBulk", "UpgradeGoalsSpeed", function(M) M:FireServer("UpgradeUpgradeMax", "Goals", "RuneBulk") end)
+createLoop("AutoUpgradeRuneLuck", "UpgradeGoalsSpeed", function(M) M:FireServer("UpgradeUpgradeMax", "Goals", "RuneLuck") end)
 
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeWCNoob then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedWCNoobUpgrades) do pcall(function() M:FireServer("UpgradeNoobMax", v) end) end end; task.wait(env.SqaysConfig.UpgradeWCNoobSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoBuyTrophy then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyTrophy", env.SqaysConfig.SelectedTrophy) end) end end; task.wait(env.SqaysConfig.BuyTrophySpeed) else task.wait(0.1) end end end)
+createLoop("AutoUpgradeWCNoob", "UpgradeWCNoobSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedWCNoobUpgrades) do M:FireServer("UpgradeNoobMax", v) end
+end)
+createLoop("AutoBuyTrophy", "BuyTrophySpeed", function(M) M:FireServer("BuyTrophy", env.SqaysConfig.SelectedTrophy) end)
 
 local GOAL_MULTI_MAPPING = {
-    GoalsMulti1 = "GoalsMulti1",
-    GoalsMulti2 = "GoalsMulti2",
-    GoalsMulti3 = "GoalsMulti3",
-    BigGoalMulti = "BigGoalMulti",
-    GoalsMulti4 = "GoalMulti1",
-    GoalsMulti5 = "GoalMulti2",
+    GoalsMulti1 = "GoalsMulti1", GoalsMulti2 = "GoalsMulti2", GoalsMulti3 = "GoalsMulti3",
+    BigGoalMulti = "BigGoalMulti", GoalsMulti4 = "GoalMulti1", GoalsMulti5 = "GoalMulti2",
 }
 
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoGoalMultis then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedGoalMultis) do local mapped = GOAL_MULTI_MAPPING[v] or v; pcall(function() M:FireServer("BuyFootballUITreeNode", mapped) end); task.wait(0.1) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoGoalSpeed then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "GoalsSpeed") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoHackerPoint then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "B3_HackPointMul") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUnlockNoobs then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedUnlockNoobs) do pcall(function() M:FireServer("BuyFootballUITreeNode", v) end); task.wait(0.1) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoPrismRuneBulk then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "PRuneBulk") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoOofMulti then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "B3_OofMulti") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUnlockSoccerRune then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "B3_UnlockSoccerRune") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUnlockSoccerCapsule then local M = getMainRemote(); if M then pcall(function() M:FireServer("BuyFootballUITreeNode", "UnlockSoccerCapsule") end) end end; task.wait(env.SqaysConfig.GoalTreeSpeed) else task.wait(0.1) end end end)
+createLoop("AutoGoalMultis", "GoalTreeSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedGoalMultis) do
+        local mapped = GOAL_MULTI_MAPPING[v] or v
+        M:FireServer("BuyFootballUITreeNode", mapped)
+        task.wait(0.1)
+    end
+end)
 
+createLoop("AutoGoalSpeed", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "GoalsSpeed") end)
+createLoop("AutoHackerPoint", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "B3_HackPointMul") end)
+
+createLoop("AutoUnlockNoobs", "GoalTreeSpeed", function(M)
+    for _, v in ipairs(env.SqaysConfig.SelectedUnlockNoobs) do
+        M:FireServer("BuyFootballUITreeNode", v)
+        task.wait(0.1)
+    end
+end)
+
+createLoop("AutoPrismRuneBulk", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "PRuneBulk") end)
+createLoop("AutoOofMulti", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "B3_OofMulti") end)
+createLoop("AutoUnlockSoccerRune", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "B3_UnlockSoccerRune") end)
+createLoop("AutoUnlockSoccerCapsule", "GoalTreeSpeed", function(M) M:FireServer("BuyFootballUITreeNode", "UnlockSoccerCapsule") end)
+
+-- Telemetria UI na żywo
 local runTimer = 0
 task.spawn(function()
     while scriptRunning and not env.p1_kill_switch do
@@ -744,6 +784,13 @@ task.spawn(function()
                 runTimer = 0
             end
         end
+        if runTime > 0 then estPerHour = math.floor((totalMined / runTime) * 3600) end 
+        local statusText = looping and "🟢 ACTIVE" or "🔴 PAUSED" 
+        local dispText = string.format(
+            "Status: %s\n⏱️ Last 5m: %d | 📈 Rate: %d/h\n🔋 Mined: %d | ⏳ Uptime: %dh %dm\n📊 Trend: %s\n💎 Celestium: %d | 💜 Voidsteel: %d\n💙 Aetherite: %d | ❤️ Ruby: %d",
+            statusText, display5MinMined, estPerHour, totalMined, math.floor(runTime/3600), math.floor((runTime%3600)/60), getTrendData(), celestiumMined, voidsteelMined, aetheriteMined, rubyMined
+        )
+        pcall(function() TelemetryPara:SetDesc(dispText) end)
     end
 end)
 
