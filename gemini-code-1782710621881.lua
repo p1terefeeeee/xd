@@ -526,11 +526,11 @@ AutoWCNoobTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeWCNoob = Valu
 
 local safeWCNoobs = {}
 for k, v in pairs(env.SqaysConfig.SelectedWCNoobUpgrades) do if type(v) == "string" then table.insert(safeWCNoobs, v) elseif type(k) == "string" and v == true then table.insert(safeWCNoobs, k) end end
-local WCNoobDrop = Tabs.WorldCup:AddDropdown("W_WCNoobTypes", {Title = "Select WC Noob Upgrades", Values = {"Goalkeeper", "RightBack", "RightCenterBack", "LeftCenterBack"}, Multi = true, Default = safeWCNoobs})
+local WCNoobDrop = Tabs.WorldCup:AddDropdown("W_WCNoobTypes", {Title = "Select WC Noob Upgrades", Values = {"Goalkeeper", "RightBack", "RightCenterBack", "RightDefensiveMid", "LeftCenterBack", "LeftBack"}, Multi = true, Default = safeWCNoobs})
 WCNoobDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for _, name in ipairs({"Goalkeeper", "RightBack", "RightCenterBack", "LeftCenterBack"}) do
+        for _, name in ipairs({"Goalkeeper", "RightBack", "RightCenterBack", "LeftCenterBack", "LeftBack", "RightDefensiveMid"}) do
             if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
