@@ -1,4 +1,4 @@
--- p1_v3.8.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + SILENT CRASH FIX + NO-RUBY LOOP + TABLE CLEAR/SAVE FIX]
+-- p1_v3.9.lua - Rebirth Engine - Modern Modular UI Framework [UI-FIRST ARCHITECTURE + ZOMBIE THREAD KILL-SWITCH + HARD-TYPED JSON SANITIZATION + PHANTOM UNCHECK FIX]
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -10,11 +10,22 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
--- =========================================================================
--- 1. ZMIENNE, KONFIGURACJA I ZABEZPIECZENIA PAMIĘCI (ENVIRONMENT & SANITY)
--- =========================================================================
-local scriptRunning = true
 local env = getgenv and getgenv() or _G
+
+-- =========================================================================
+-- 0. SINGLETON KILL SWITCH
+-- =========================================================================
+if env.p1_script_running then
+    env.p1_kill_switch = true
+    task.wait(0.5) 
+end
+env.p1_script_running = true
+env.p1_kill_switch = false
+local scriptRunning = true
+
+-- =========================================================================
+-- 1. ZMIENNE, KONFIGURACJA I ZABEZPIECZENIA PAMIĘCI
+-- =========================================================================
 env.SqaysConfig = env.SqaysConfig or {}
 
 local function ensureTable(val)
@@ -76,24 +87,8 @@ local history5min = {}
 local RuneNames = {"Basic", "Super", "Advanced", "Cosmic Prism", "Hacker", "Snowy", "Deepcore"}
 local GemNames = {"All", "Coal", "Iron", "Sliver", "Gold", "Platinum", "Titanium", "Emerald", "Diamond", "Opal", "Jade", "Amber", "Topaz", "Ruby", "Amethyst", "Quartz", "Sapphire", "Uranium", "Crystal", "Obsidian"}
 
-local RuneSettings = {}
-for _, name in ipairs(RuneNames) do RuneSettings[name] = false end
-
-local GemsToExchange = {}
-local GemsSelectedMap = {}
-
 local saveFileName = "p1_Rebirth_Storage.json"
 local presetFileName = "p1_GUI_Presets.json"
-
-local function saveSettings()
-    local data = {
-        SqaysConfig = env.SqaysConfig,
-        Settings = Settings,
-        RuneSettings = RuneSettings,
-        GemsSelectedMap = GemsSelectedMap
-    }
-    pcall(function() if writefile then writefile(saveFileName, HttpService:JSONEncode(data)) end end)
-end
 
 local function loadSettings()
     pcall(function()
@@ -103,8 +98,6 @@ local function loadSettings()
             if data then
                 if data.SqaysConfig then for k, v in pairs(data.SqaysConfig) do env.SqaysConfig[k] = v end end
                 if data.Settings then for k, v in pairs(data.Settings) do Settings[k] = v end end
-                if data.RuneSettings then for k, v in pairs(data.RuneSettings) do RuneSettings[k] = v end end
-                if data.GemsSelectedMap then for k, v in pairs(data.GemsSelectedMap) do GemsSelectedMap[k] = v end end
             end
         end
     end)
@@ -112,6 +105,18 @@ end
 
 loadSettings()
 
+-- BEZPIECZNE INICJALIZACJE TABEL
+env.SqaysConfig.RuneSettings = ensureTable(env.SqaysConfig.RuneSettings)
+for _, name in ipairs(RuneNames) do 
+    if env.SqaysConfig.RuneSettings[name] == nil then env.SqaysConfig.RuneSettings[name] = false end 
+end
+
+env.SqaysConfig.GemsSelectedMap = ensureTable(env.SqaysConfig.GemsSelectedMap)
+for _, name in ipairs(GemNames) do 
+    if env.SqaysConfig.GemsSelectedMap[name] == nil then env.SqaysConfig.GemsSelectedMap[name] = false end 
+end
+
+env.SqaysConfig.GemsToExchange = ensureTable(env.SqaysConfig.GemsToExchange)
 env.SqaysConfig.SelectedNoobUpgrades = ensureTable(env.SqaysConfig.SelectedNoobUpgrades)
 env.SqaysConfig.SelectedGemUpgrades = ensureTable(env.SqaysConfig.SelectedGemUpgrades)
 env.SqaysConfig.SelectedPlankUpgrades = ensureTable(env.SqaysConfig.SelectedPlankUpgrades)
@@ -119,29 +124,63 @@ env.SqaysConfig.SelectedWaterUpgrades = ensureTable(env.SqaysConfig.SelectedWate
 
 local function rebuildGemsToExchangeList()
     local newGems = {}
-    for gName, isSelected in pairs(GemsSelectedMap) do if isSelected then table.insert(newGems, gName) end end
-    GemsToExchange = newGems
+    for _, gName in ipairs(GemNames) do 
+        if env.SqaysConfig.GemsSelectedMap[gName] == true then 
+            table.insert(newGems, gName) 
+        end 
+    end
+    env.SqaysConfig.GemsToExchange = newGems
 end
 rebuildGemsToExchangeList()
 
+-- NAPRAWA PLIKU ZAPISU: Filtrujemy dane tak, aby zablokować jakiekolwiek śmieci psujące format .json
+local function saveSettings()
+    local cleanSqaysConfig = {
+        MiningSpeed = env.SqaysConfig.MiningSpeed,
+        TierSpeed = env.SqaysConfig.TierSpeed,
+        RuneSpeed = env.SqaysConfig.RuneSpeed,
+        TreeSpeed = env.SqaysConfig.TreeSpeed,
+        WaterPumpSpeed = env.SqaysConfig.WaterPumpSpeed,
+        IceConvertSpeed = env.SqaysConfig.IceConvertSpeed,
+        AshConvertSpeed = env.SqaysConfig.AshConvertSpeed,
+        BlazeQuestSpeed = env.SqaysConfig.BlazeQuestSpeed,
+        ExchangeGemsSpeed = env.SqaysConfig.ExchangeGemsSpeed,
+        SelectedIceLevel = env.SqaysConfig.SelectedIceLevel,
+        MiningTarget = env.SqaysConfig.MiningTarget,
+        MovementMethod = env.SqaysConfig.MovementMethod,
+        AutoUpgradeNoob = env.SqaysConfig.AutoUpgradeNoob,
+        AutoUpgradeGems = env.SqaysConfig.AutoUpgradeGems,
+        AutoUpgradePlanks = env.SqaysConfig.AutoUpgradePlanks,
+        AutoUpgradeWater = env.SqaysConfig.AutoUpgradeWater,
+        UpgradeNoobSpeed = env.SqaysConfig.UpgradeNoobSpeed,
+        UpgradeGemsSpeed = env.SqaysConfig.UpgradeGemsSpeed,
+        UpgradePlanksSpeed = env.SqaysConfig.UpgradePlanksSpeed,
+        UpgradeWaterSpeed = env.SqaysConfig.UpgradeWaterSpeed,
+        AutoRollTier = env.SqaysConfig.AutoRollTier,
+        AutoHitTree = env.SqaysConfig.AutoHitTree,
+        AutoWaterPump = env.SqaysConfig.AutoWaterPump,
+        AutoBlazeQuest = env.SqaysConfig.AutoBlazeQuest,
+        AutoConvertWoodToAsh = env.SqaysConfig.AutoConvertWoodToAsh,
+        AutoExchangeGems = env.SqaysConfig.AutoExchangeGems,
+        AutoRollRunes = env.SqaysConfig.AutoRollRunes,
+        AntiAFK = env.SqaysConfig.AntiAFK,
+        RuneSettings = env.SqaysConfig.RuneSettings,
+        GemsSelectedMap = env.SqaysConfig.GemsSelectedMap,
+        SelectedNoobUpgrades = env.SqaysConfig.SelectedNoobUpgrades,
+        SelectedGemUpgrades = env.SqaysConfig.SelectedGemUpgrades,
+        SelectedPlankUpgrades = env.SqaysConfig.SelectedPlankUpgrades,
+        SelectedWaterUpgrades = env.SqaysConfig.SelectedWaterUpgrades
+    }
+    
+    local data = {
+        SqaysConfig = cleanSqaysConfig,
+        Settings = Settings
+    }
+    pcall(function() if writefile then writefile(saveFileName, HttpService:JSONEncode(data)) end end)
+end
+
 local function syncGlobals()
-    _G.MiningSpeed = env.SqaysConfig.MiningSpeed
-    _G.TierSpeed = env.SqaysConfig.TierSpeed
-    _G.RuneSpeed = env.SqaysConfig.RuneSpeed
-    _G.TreeSpeed = env.SqaysConfig.TreeSpeed
-    _G.WaterPumpSpeed = env.SqaysConfig.WaterPumpSpeed
-    _G.IceConvertSpeed = env.SqaysConfig.IceConvertSpeed
-    _G.AshConvertSpeed = env.SqaysConfig.AshConvertSpeed
-    _G.BlazeQuestSpeed = env.SqaysConfig.BlazeQuestSpeed
-    _G.ExchangeGemsSpeed = env.SqaysConfig.ExchangeGemsSpeed
-    _G.AutoRollTier = env.SqaysConfig.AutoRollTier
-    _G.AutoHitTree = env.SqaysConfig.AutoHitTree
-    _G.AutoWaterPump = env.SqaysConfig.AutoWaterPump
-    _G.AutoBlazeQuest = env.SqaysConfig.AutoBlazeQuest
-    _G.AutoConvertWoodToAsh = env.SqaysConfig.AutoConvertWoodToAsh
-    _G.AutoExchangeGems = env.SqaysConfig.AutoExchangeGems
-    _G.AutoRollRunes = env.SqaysConfig.AutoRollRunes
-    _G.AntiAFK = env.SqaysConfig.AntiAFK
+    for k, v in pairs(env.SqaysConfig) do _G[k] = v end
 end
 syncGlobals()
 
@@ -213,7 +252,7 @@ local function dispatchStatsWebhook()
                 {name = "💜 Voidsteel", value = string.format("`%d`", voidsteelMined), inline = true},
                 {name = "💙 Aetherite", value = string.format("`%d`", aetheriteMined), inline = true},
                 {name = "❤️ Ruby", value = string.format("`%d`", rubyMined), inline = true}
-            }, footer = { text = "p1 v3.8" }, timestamp = DateTime.now():ToIsoDate()
+            }, footer = { text = "p1 v3.9" }, timestamp = DateTime.now():ToIsoDate()
         }}
     }
     pcall(function() request({Url = webhookUrl, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(payload)}) end)
@@ -264,7 +303,7 @@ local function setAntiIdle(enabled)
     env.SqaysConfig.AntiAFK = enabled; _G.AntiAFK = enabled
     if antiIdleConnection then antiIdleConnection:Disconnect(); antiIdleConnection = nil end
     if not enabled then return end
-    antiIdleConnection = player.Idled:Connect(function() if scriptRunning then pcall(function() VirtualUser:CaptureController(); VirtualUser:ClickButton2(Vector2.new()) end) end end)
+    antiIdleConnection = player.Idled:Connect(function() if scriptRunning and not env.p1_kill_switch then pcall(function() VirtualUser:CaptureController(); VirtualUser:ClickButton2(Vector2.new()) end) end end)
 end
 
 local function moveToPointAntiSlip(targetPos, hrp)
@@ -279,7 +318,7 @@ local function moveToPointAntiSlip(targetPos, hrp)
     if humanoid then humanoid.AutoRotate = false end
     hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
 
-    while scriptRunning do
+    while scriptRunning and not env.p1_kill_switch do
         if not looping or env.SqaysConfig.MovementMethod == "Teleport" then break end
         local currentPos = hrp.Position
         local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
@@ -305,7 +344,7 @@ end
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "p1 v3.8",
+    Title = "p1 v3.9",
     SubTitle = "Rebirth Engine",
     TabWidth = 120, 
     Size = UDim2.fromOffset(580, 380),
@@ -347,23 +386,25 @@ local OreBreakInput = Tabs.Mining:AddInput("OreWaitInput", {Title = "Ore Break (
 OreBreakInput:OnChanged(function(Value) local num = tonumber(Value); if num then Settings.WaitTimeOnOre = math.clamp(num, 0.20, 3.0); saveSettings() end end)
 
 Tabs.Mining:AddSection("Telemetry")
-local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.8)", Content = "Waiting for execution..."})
+local TelemetryPara = Tabs.Mining:AddParagraph({Title = "Stats (v3.9)", Content = "Waiting for execution..."})
 
 Tabs.Mining:AddSection("Ore Exchange")
 local AutoExchToggle = Tabs.Mining:AddToggle("AutoExch", {Title = "Auto Exchange", Default = env.SqaysConfig.AutoExchangeGems})
 AutoExchToggle:OnChanged(function(Value) env.SqaysConfig.AutoExchangeGems = Value; syncGlobals(); saveSettings() end)
 
 local defGems = {}
-for k, v in pairs(GemsSelectedMap) do if v then table.insert(defGems, k) end end
+for k, v in pairs(env.SqaysConfig.GemsSelectedMap) do if v then table.insert(defGems, k) end end
 local GemDropdown = Tabs.Mining:AddDropdown("GemsDrop", {Title = "Minerals", Values = GemNames, Multi = true, Default = defGems})
 
--- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+-- NAPRAWIONO: Twarde mapowanie dla Dropdownu Multi
 GemDropdown:OnChanged(function(Value) 
-    for k in pairs(GemsSelectedMap) do GemsSelectedMap[k] = nil end
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then GemsSelectedMap[k] = true 
-            elseif type(v) == "string" then GemsSelectedMap[v] = true end 
+        for _, name in ipairs(GemNames) do
+            if Value[name] == true or Value[name] == name then
+                env.SqaysConfig.GemsSelectedMap[name] = true
+            else
+                env.SqaysConfig.GemsSelectedMap[name] = false
+            end
         end
     end
     rebuildGemsToExchangeList()
@@ -379,16 +420,18 @@ local AutoRuneToggle = Tabs.Auto:AddToggle("AutoRune", {Title = "Auto Roll Runes
 AutoRuneToggle:OnChanged(function(Value) env.SqaysConfig.AutoRollRunes = Value; syncGlobals(); saveSettings() end)
 
 local defRunes = {}
-for k, v in pairs(RuneSettings) do if v then table.insert(defRunes, k) end end
+for k, v in pairs(env.SqaysConfig.RuneSettings) do if v then table.insert(defRunes, k) end end
 local RuneDropdown = Tabs.Auto:AddDropdown("RunesDrop", {Title = "Runes Selected", Values = RuneNames, Multi = true, Default = defRunes})
 
--- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+-- NAPRAWIONO: Twarde mapowanie dla Run
 RuneDropdown:OnChanged(function(Value) 
-    for _, name in ipairs(RuneNames) do RuneSettings[name] = false end 
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then RuneSettings[k] = true 
-            elseif type(v) == "string" then RuneSettings[v] = true end 
+        for _, name in ipairs(RuneNames) do
+            if Value[name] == true or Value[name] == name then
+                env.SqaysConfig.RuneSettings[name] = true
+            else
+                env.SqaysConfig.RuneSettings[name] = false
+            end
         end
     end
     saveSettings() 
@@ -437,17 +480,12 @@ Tabs.Upgrades:AddSection("Noob Upgrades")
 local AutoNoobTog = Tabs.Upgrades:AddToggle("U_AutoNoob", {Title = "Auto Upgrade Noobs", Default = env.SqaysConfig.AutoUpgradeNoob})
 AutoNoobTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeNoob = Value; saveSettings() end)
 
-local safeNoobs = {}
-for k, v in pairs(env.SqaysConfig.SelectedNoobUpgrades) do if type(v) == "string" then table.insert(safeNoobs, v) elseif type(k) == "string" and v == true then table.insert(safeNoobs, k) end end
-local NoobDrop = Tabs.Upgrades:AddDropdown("U_NoobTypes", {Title = "Select Noob Types", Values = {"Fisherman", "Knight", "Explorer", "Magician"}, Multi = true, Default = safeNoobs})
-
--- NAPRAWIONO: Czysty reset tabeli bez table.clear()
+local NoobDrop = Tabs.Upgrades:AddDropdown("U_NoobTypes", {Title = "Select Noob Types", Values = {"Fisherman", "Knight", "Explorer", "Magician"}, Multi = true, Default = env.SqaysConfig.SelectedNoobUpgrades})
 NoobDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then table.insert(newTbl, k) 
-            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        for _, name in ipairs({"Fisherman", "Knight", "Explorer", "Magician"}) do
+            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
     env.SqaysConfig.SelectedNoobUpgrades = newTbl
@@ -461,15 +499,12 @@ Tabs.Upgrades:AddSection("Upgrades With Gems")
 local AutoGemUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoGemUpgrade", {Title = "Auto Upgrade Gems", Default = env.SqaysConfig.AutoUpgradeGems})
 AutoGemUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeGems = Value; saveSettings() end)
 
-local safeGemsUpg = {}
-for k, v in pairs(env.SqaysConfig.SelectedGemUpgrades) do if type(v) == "string" then table.insert(safeGemsUpg, v) elseif type(k) == "string" and v == true then table.insert(safeGemsUpg, k) end end
-local GemUpgradeDrop = Tabs.Upgrades:AddDropdown("U_GemUpgrades", {Title = "Select Gem Upgrades", Values = {"MoreGems", "MoreOreStats", "MoreOof"}, Multi = true, Default = safeGemsUpg})
+local GemUpgradeDrop = Tabs.Upgrades:AddDropdown("U_GemUpgrades", {Title = "Select Gem Upgrades", Values = {"MoreGems", "MoreOreStats", "MoreOof"}, Multi = true, Default = env.SqaysConfig.SelectedGemUpgrades})
 GemUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then table.insert(newTbl, k) 
-            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        for _, name in ipairs({"MoreGems", "MoreOreStats", "MoreOof"}) do
+            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
     env.SqaysConfig.SelectedGemUpgrades = newTbl
@@ -483,15 +518,12 @@ Tabs.Upgrades:AddSection("Upgrades With Planks")
 local AutoPlankUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoPlankUpgrade", {Title = "Auto Upgrade Planks", Default = env.SqaysConfig.AutoUpgradePlanks})
 AutoPlankUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradePlanks = Value; saveSettings() end)
 
-local safePlanks = {}
-for k, v in pairs(env.SqaysConfig.SelectedPlankUpgrades) do if type(v) == "string" then table.insert(safePlanks, v) elseif type(k) == "string" and v == true then table.insert(safePlanks, k) end end
-local PlankUpgradeDrop = Tabs.Upgrades:AddDropdown("U_PlankUpgrades", {Title = "Select Plank Upgrades", Values = {"WaterFromPlanks", "MorePlanks"}, Multi = true, Default = safePlanks})
+local PlankUpgradeDrop = Tabs.Upgrades:AddDropdown("U_PlankUpgrades", {Title = "Select Plank Upgrades", Values = {"WaterFromPlanks", "MorePlanks"}, Multi = true, Default = env.SqaysConfig.SelectedPlankUpgrades})
 PlankUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then table.insert(newTbl, k) 
-            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        for _, name in ipairs({"WaterFromPlanks", "MorePlanks"}) do
+            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
     env.SqaysConfig.SelectedPlankUpgrades = newTbl
@@ -505,15 +537,12 @@ Tabs.Upgrades:AddSection("Upgrades With Water")
 local AutoWaterUpgradeTog = Tabs.Upgrades:AddToggle("U_AutoWaterUpgrade", {Title = "Auto Upgrade Water", Default = env.SqaysConfig.AutoUpgradeWater})
 AutoWaterUpgradeTog:OnChanged(function(Value) env.SqaysConfig.AutoUpgradeWater = Value; saveSettings() end)
 
-local safeWater = {}
-for k, v in pairs(env.SqaysConfig.SelectedWaterUpgrades) do if type(v) == "string" then table.insert(safeWater, v) elseif type(k) == "string" and v == true then table.insert(safeWater, k) end end
-local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {Title = "Select Water Upgrades", Values = {"MoreGems", "MorePlanks"}, Multi = true, Default = safeWater})
+local WaterUpgradeDrop = Tabs.Upgrades:AddDropdown("U_WaterUpgrades", {Title = "Select Water Upgrades", Values = {"MoreGems", "MorePlanks"}, Multi = true, Default = env.SqaysConfig.SelectedWaterUpgrades})
 WaterUpgradeDrop:OnChanged(function(Value) 
     local newTbl = {}
     if type(Value) == "table" then
-        for k, v in pairs(Value) do 
-            if type(k) == "string" and v == true then table.insert(newTbl, k) 
-            elseif type(v) == "string" then table.insert(newTbl, v) end 
+        for _, name in ipairs({"MoreGems", "MorePlanks"}) do
+            if Value[name] == true or Value[name] == name then table.insert(newTbl, name) end
         end
     end
     env.SqaysConfig.SelectedWaterUpgrades = newTbl
@@ -551,25 +580,24 @@ Tabs.SettingsTab:AddSection("Danger Zone")
 Tabs.SettingsTab:AddButton({ 
     Title = "Del Script", 
     Callback = function() 
-        scriptRunning = false; looping = false; clip(); setAntiIdle(false) 
+        scriptRunning = false; looping = false; clip(); setAntiIdle(false); env.p1_kill_switch = true
         for k, _ in pairs(env.SqaysConfig) do if type(env.SqaysConfig[k]) == "boolean" then env.SqaysConfig[k] = false end end
-        syncGlobals(); if Window then Window:Destroy() end 
+        if Window then Window:Destroy() end 
     end
 })
 
 Window:SelectTab(1) 
-Fluent:Notify({Title = "System Ready", Content = "GUI Loaded. Core loop bugs fixed.", Duration = 3})
+Fluent:Notify({Title = "System Ready", Content = "Workspace JSON Save & Phantom checks stabilized.", Duration = 5})
 
 if Settings.UseNoclip then task.spawn(noclip) end
 setAntiIdle(env.SqaysConfig.AntiAFK)
 
 -- =========================================================================
--- 4. URUCHOMIENIE PĘTLI WYKONAWCZYCH (PO ZAŁADOWANIU CAŁEGO GUI)
+-- 4. URUCHOMIENIE PĘTLI WYKONAWCZYCH
 -- =========================================================================
 
--- Telemetria UI na żywo
 task.spawn(function()
-    while scriptRunning do
+    while scriptRunning and not env.p1_kill_switch do
         task.wait(1)
         if runTime > 0 then estPerHour = math.floor((totalMined / runTime) * 3600) end 
         local statusText = looping and "🟢 ACTIVE" or "🔴 PAUSED" 
@@ -581,25 +609,23 @@ task.spawn(function()
     end
 end)
 
--- Pętle Upgrades
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoUpgradeNoob then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedNoobUpgrades) do pcall(function() M:FireServer("UpgradeNoobMax", v) end) end end; task.wait(env.SqaysConfig.UpgradeNoobSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoUpgradeGems then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedGemUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Gem", v) end) end end; task.wait(env.SqaysConfig.UpgradeGemsSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoUpgradePlanks then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedPlankUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Planks", v) end) end end; task.wait(env.SqaysConfig.UpgradePlanksSpeed) else task.wait(0.1) end end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoUpgradeWater then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedWaterUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Water", v) end) end end; task.wait(env.SqaysConfig.UpgradeWaterSpeed) else task.wait(0.1) end end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeNoob then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedNoobUpgrades) do pcall(function() M:FireServer("UpgradeNoobMax", v) end) end end; task.wait(env.SqaysConfig.UpgradeNoobSpeed) else task.wait(0.1) end end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeGems then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedGemUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Gem", v) end) end end; task.wait(env.SqaysConfig.UpgradeGemsSpeed) else task.wait(0.1) end end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradePlanks then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedPlankUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Planks", v) end) end end; task.wait(env.SqaysConfig.UpgradePlanksSpeed) else task.wait(0.1) end end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoUpgradeWater then local M = getMainRemote(); if M then for _, v in ipairs(env.SqaysConfig.SelectedWaterUpgrades) do pcall(function() M:FireServer("UpgradeUpgrade", "Water", v) end) end end; task.wait(env.SqaysConfig.UpgradeWaterSpeed) else task.wait(0.1) end end end)
 
--- Pętle Automation
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoRollTier then local M = getMainRemote(); if M then M:FireServer("RollTier") end end; task.wait(env.SqaysConfig.TierSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoRollRunes then local M = getMainRemote(); if M then for _, name in ipairs(RuneNames) do if RuneSettings[name] and scriptRunning then M:FireServer("RollRune", name) end end end end; task.wait(env.SqaysConfig.RuneSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoHitTree then local M = getMainRemote(); if M and player:FindFirstChild("FEATURES") and player.FEATURES:FindFirstChild("TREE") and player.FEATURES.TREE:FindFirstChild("IsSpawned") and player.FEATURES.TREE.IsSpawned.Value then M:FireServer("HitTree") end end; task.wait(env.SqaysConfig.TreeSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoWaterPump then local M = getMainRemote(); if M then M:FireServer("GainWater") end end; task.wait(env.SqaysConfig.WaterPumpSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoBlazeQuest then local M = getMainRemote(); if M then M:FireServer("SetUpgradeAutomationPaused", "Fire", false); M:FireServer("Blaze") end end; task.wait(env.SqaysConfig.BlazeQuestSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoConvertWoodToAsh then local M = getMainRemote(); if M then M:FireServer("ConvertWoodToAsh") end end; task.wait(env.SqaysConfig.AshConvertSpeed) end end)
-task.spawn(function() while scriptRunning do local c = env.SqaysConfig.SelectedIceLevel or 0; if c > 0 then pcall(function() local M = getMainRemote(); if M then M:FireServer("PressButton", c) end end) end; task.wait(env.SqaysConfig.IceConvertSpeed) end end)
-task.spawn(function() while scriptRunning do if env.SqaysConfig.AutoExchangeGems then pcall(function() local M = getMainRemote(); if M and #GemsToExchange > 0 then for _, gem in ipairs(GemsToExchange) do if not env.SqaysConfig.AutoExchangeGems or not scriptRunning then break end; if gem == "All" then M:FireServer("ExchangeAllMinerals"); break end; local amt = 0; local c = player:FindFirstChild("CURRENCIES"); local f = c and c:FindFirstChild(gem); local a = f and f:FindFirstChild("Amount"); local v = a and a:FindFirstChild("1"); if v then amt = tonumber(v.Value) or 0 end; if amt > 0 then M:FireServer("ExchangeMineral", gem) end end end end) end; task.wait(env.SqaysConfig.ExchangeGemsSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoRollTier then local M = getMainRemote(); if M then M:FireServer("RollTier") end end; task.wait(env.SqaysConfig.TierSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoRollRunes then local M = getMainRemote(); if M then for _, name in ipairs(RuneNames) do if env.SqaysConfig.RuneSettings[name] then M:FireServer("RollRune", name) end end end end; task.wait(env.SqaysConfig.RuneSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoHitTree then local M = getMainRemote(); if M and player:FindFirstChild("FEATURES") and player.FEATURES:FindFirstChild("TREE") and player.FEATURES.TREE:FindFirstChild("IsSpawned") and player.FEATURES.TREE.IsSpawned.Value then M:FireServer("HitTree") end end; task.wait(env.SqaysConfig.TreeSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoWaterPump then local M = getMainRemote(); if M then M:FireServer("GainWater") end end; task.wait(env.SqaysConfig.WaterPumpSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoBlazeQuest then local M = getMainRemote(); if M then M:FireServer("SetUpgradeAutomationPaused", "Fire", false); M:FireServer("Blaze") end end; task.wait(env.SqaysConfig.BlazeQuestSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoConvertWoodToAsh then local M = getMainRemote(); if M then M:FireServer("ConvertWoodToAsh") end end; task.wait(env.SqaysConfig.AshConvertSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do local c = env.SqaysConfig.SelectedIceLevel or 0; if c > 0 then pcall(function() local M = getMainRemote(); if M then M:FireServer("PressButton", c) end end) end; task.wait(env.SqaysConfig.IceConvertSpeed) end end)
+task.spawn(function() while scriptRunning and not env.p1_kill_switch do if env.SqaysConfig.AutoExchangeGems then pcall(function() local M = getMainRemote(); if M and #env.SqaysConfig.GemsToExchange > 0 then for _, gem in ipairs(env.SqaysConfig.GemsToExchange) do if not env.SqaysConfig.AutoExchangeGems then break end; if gem == "All" then M:FireServer("ExchangeAllMinerals"); break end; local amt = 0; local c = player:FindFirstChild("CURRENCIES"); local f = c and c:FindFirstChild(gem); local a = f and f:FindFirstChild("Amount"); local v = a and a:FindFirstChild("1"); if v then amt = tonumber(v.Value) or 0 end; if amt > 0 then M:FireServer("ExchangeMineral", gem) end end end end) end; task.wait(env.SqaysConfig.ExchangeGemsSpeed) end end)
 
 local runTimer = 0
 task.spawn(function()
-    while scriptRunning do
+    while scriptRunning and not env.p1_kill_switch do
         task.wait(1)
         if looping then
             runTime = runTime + 1 
@@ -615,20 +641,19 @@ task.spawn(function()
     end
 end)
 
--- GŁÓWNA PĘTLA KOPANIA
 task.spawn(function()
-    while scriptRunning do
+    while scriptRunning and not env.p1_kill_switch do
         if looping then
             local mode = env.SqaysConfig.MiningTarget or "Voidsteel + Celestium + Aetherite Loop"
             local activeRoute = master_routes[mode]
             if activeRoute then
                 for _, target in ipairs(activeRoute) do
-                    if not looping or not scriptRunning then break end
+                    if not looping or not scriptRunning or env.p1_kill_switch then break end
                     local char = player.Character or player.CharacterAdded:Wait()
                     local hrp = char:WaitForChild("HumanoidRootPart", 5)
                     if hrp then
                         moveToPointAntiSlip(target.pos, hrp)
-                        if not scriptRunning then break end
+                        if not scriptRunning or env.p1_kill_switch then break end
                         totalMined = totalMined + 1
                         minedInLast5Mins = minedInLast5Mins + 1
                         if string.find(target.name, "Celestium") then celestiumMined = celestiumMined + 1
