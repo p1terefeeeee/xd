@@ -1,7 +1,14 @@
--- Zoptymalizowany Sqays Hub - Auto Mine + Auto Trial + Test Mode (Rayfield)
+-- Zoptymalizowany Sqays Hub - Auto Mine + Auto Trial (Force-Reload Fix)
 local env = getgenv and getgenv() or _G
-if env.NILoaded then return end
-env.NILoaded = true; env.NIStop = false
+
+-- ===== SINGLETON KILL SWITCH (NAPRAWIONY) =====
+-- Jeśli skrypt jest już w pamięci, wymuś jego zatrzymanie zamiast blokować uruchomienie
+if env.NILoaded then 
+    env.NIStop = true
+    task.wait(0.5) -- Czekamy chwilę, aż stare pętle się zamkną
+end
+env.NILoaded = true
+env.NIStop = false
 
 -- ===== EXECUTOR DETECTION =====
 local execName = "Unknown"
@@ -41,7 +48,7 @@ local T = {
     enabled = false,
     difficulty = "Easy",
     grinding = false,
-    testing = false, -- Nowy tryb testowy
+    testing = false,
     schedulerRunning = false,
     autoAttack = true
 }
@@ -260,13 +267,12 @@ local function findTargetMob()
     local trials = gc and gc:FindFirstChild("Trials")
     local mobs = trials and trials:FindFirstChild("Mobs")
     
-    -- Fallback dla trybu testowego na zewnątrz Trialu
+    -- Fallback dla trybu testowego
     if not mobs then 
         mobs = WS:FindFirstChild("Mobs") or WS:FindFirstChild("Enemies") 
     end
     if not mobs then return nil end
     
-    -- Szukanie priorytetowe
     local mobPriority = {"Goblin", "Skeleton", "Orc"}
     for _, mobType in ipairs(mobPriority) do
         for _, mob in ipairs(mobs:GetChildren()) do
@@ -276,7 +282,7 @@ local function findTargetMob()
         end
     end
     
-    -- Fallback: jakikolwiek żywy mob w folderze
+    -- Jakikolwiek mob jeśli priorytetowe nie żyją
     for _, mob in ipairs(mobs:GetChildren()) do
         if isMobAlive(mob) then
             return mob
@@ -286,7 +292,7 @@ local function findTargetMob()
     return nil
 end
 
--- PĘTLA WALKI (Używana w normalnym Trialu i w Teście)
+-- PĘTLA WALKI
 local function executeCombatLoop(stateKey)
     while T[stateKey] and not env.NIStop do
         local mob = findTargetMob()
@@ -323,19 +329,16 @@ local function executeCombatLoop(stateKey)
     end
 end
 
--- Główny proces GrindTrial
 local function grindTrial()
     T.grinding = true
     executeCombatLoop("grinding")
 end
 
--- Proces testowy
 local function testTrialLogic()
     T.testing = true
     executeCombatLoop("testing")
 end
 
--- Harmonogram Triala
 local function trialScheduler()
     T.schedulerRunning = true
     while T.enabled and not env.NIStop do
@@ -352,11 +355,18 @@ local function trialScheduler()
     T.schedulerRunning = false
 end
 
--- ===== RAYFIELD UI =====
+-- ===== RAYFIELD UI (ZAPASOWE LINKI W RAZIE BŁĘDU) =====
 local Rayfield = nil
 local ok, result = pcall(function() return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() end)
-if ok and result then Rayfield = result end
-if not Rayfield then warn("[Sqays Hub] Failed to load Rayfield UI"); return end
+if ok and result then 
+    Rayfield = result 
+else
+    -- Fallback link (GitHub) jeśli sirius.menu pada
+    ok, result = pcall(function() return loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))() end)
+    if ok and result then Rayfield = result end
+end
+
+if not Rayfield then warn("[Sqays Hub] Failed to load Rayfield UI completely."); return end
 
 local Window = Rayfield:CreateWindow({
     Name = "Zoptymalizowany Sqays Hub",
@@ -410,7 +420,7 @@ TrialTab:CreateToggle({
         T.enabled = v
         if v and not T.schedulerRunning then
             task.spawn(trialScheduler)
-            Rayfield:Notify({Title = "Harmonogram włączony", Content = "Oczekiwanie na właściwy czas (xx:29:10 lub xx:59:10).", Duration = 5})
+            Rayfield:Notify({Title = "Harmonogram włączony", Content = "Oczekiwanie na właściwy czas.", Duration = 5})
         elseif not v then
             T.grinding = false
         end
@@ -426,12 +436,12 @@ TrialTab:CreateButton({
         if not T.grinding then
             task.spawn(grindTrial)
         end
-        Rayfield:Notify({Title = "Auto Trial", Content = "Rozpoczynanie walki na wybranym poziomie!", Duration = 4})
+        Rayfield:Notify({Title = "Auto Trial", Content = "Rozpoczynanie walki!", Duration = 4})
     end
 })
 
 TrialTab:CreateToggle({
-    Name = "🧪 Test Chodzenia i Bicia (Szuka na żywo wokół)",
+    Name = "🧪 Test Chodzenia i Bicia (Szuka wokół Ciebie)",
     CurrentValue = false,
     Callback = function(v)
         T.testing = v
