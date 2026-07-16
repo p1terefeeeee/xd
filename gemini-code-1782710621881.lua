@@ -1,14 +1,7 @@
--- Zoptymalizowany Sqays Hub - Auto Mine + Auto Trial (Force-Reload Fix)
+-- Zoptymalizowany Sqays Hub - Auto Mine + Auto Trial (Combat Fix)
 local env = getgenv and getgenv() or _G
-
--- ===== SINGLETON KILL SWITCH (NAPRAWIONY) =====
--- Jeśli skrypt jest już w pamięci, wymuś jego zatrzymanie zamiast blokować uruchomienie
-if env.NILoaded then 
-    env.NIStop = true
-    task.wait(0.5) -- Czekamy chwilę, aż stare pętle się zamkną
-end
-env.NILoaded = true
-env.NIStop = false
+if env.NILoaded then return end
+env.NILoaded = true; env.NIStop = false
 
 -- ===== EXECUTOR DETECTION =====
 local execName = "Unknown"
@@ -243,6 +236,11 @@ local function teleportToTrial()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     
+    -- BARDZO WAŻNE: Aktualizacja wysokości Ghost Mode przy teleportacji
+    if S.noclip then
+        fixedY = coord.Y
+    end
+    
     hrp.CFrame = CFrame.new(coord)
     hrp.AssemblyLinearVelocity = Vector3.zero
     return true
@@ -262,29 +260,44 @@ local function isMobAlive(mob)
     return true
 end
 
+-- Agresywny skaner mobów
 local function findTargetMob()
+    local potentialTargets = {}
+    
     local gc = WS:FindFirstChild("__GAME_CONTENT")
     local trials = gc and gc:FindFirstChild("Trials")
-    local mobs = trials and trials:FindFirstChild("Mobs")
+    local mobsFolder = trials and trials:FindFirstChild("Mobs")
     
-    -- Fallback dla trybu testowego
-    if not mobs then 
-        mobs = WS:FindFirstChild("Mobs") or WS:FindFirstChild("Enemies") 
+    if mobsFolder then
+        for _, v in ipairs(mobsFolder:GetChildren()) do table.insert(potentialTargets, v) end
     end
-    if not mobs then return nil end
     
+    local wsMobs = WS:FindFirstChild("Mobs") or WS:FindFirstChild("Enemies")
+    if wsMobs then
+        for _, v in ipairs(wsMobs:GetChildren()) do table.insert(potentialTargets, v) end
+    end
+    
+    if #potentialTargets == 0 then
+        for _, v in ipairs(WS:GetChildren()) do
+            if v:FindFirstChildOfClass("Humanoid") and v ~= LP.Character then
+                table.insert(potentialTargets, v)
+            end
+        end
+    end
+
+    -- Szukanie konkretnych (Goblin, itp)
     local mobPriority = {"Goblin", "Skeleton", "Orc"}
     for _, mobType in ipairs(mobPriority) do
-        for _, mob in ipairs(mobs:GetChildren()) do
+        for _, mob in ipairs(potentialTargets) do
             if string.find(mob.Name, mobType) and isMobAlive(mob) then
                 return mob
             end
         end
     end
     
-    -- Jakikolwiek mob jeśli priorytetowe nie żyją
-    for _, mob in ipairs(mobs:GetChildren()) do
-        if isMobAlive(mob) then
+    -- Szukanie byle czego
+    for _, mob in ipairs(potentialTargets) do
+        if isMobAlive(mob) and mob.Name ~= LP.Name then
             return mob
         end
     end
@@ -292,7 +305,7 @@ local function findTargetMob()
     return nil
 end
 
--- PĘTLA WALKI
+-- PĘTLA WALKI (Z naprawionym poruszaniem MoveTo)
 local function executeCombatLoop(stateKey)
     while T[stateKey] and not env.NIStop do
         local mob = findTargetMob()
@@ -306,6 +319,8 @@ local function executeCombatLoop(stateKey)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum then task.wait(0.5); continue end
         
+        hum.AutoRotate = true
+        
         if T.autoAttack then
             VU:ClickButton1(Vector2.new(0,0))
         end
@@ -318,7 +333,7 @@ local function executeCombatLoop(stateKey)
         
         if distance > 4 then
             hum.WalkSpeed = S.walkSpeed
-            hum:Move(diff.Unit)
+            hum:MoveTo(mobPos) -- Używamy MoveTo by postać płynnie obiegła przeszkody do moba
         else
             hum:Move(Vector3.zero)
             hrp.AssemblyLinearVelocity = Vector3.zero
@@ -355,18 +370,11 @@ local function trialScheduler()
     T.schedulerRunning = false
 end
 
--- ===== RAYFIELD UI (ZAPASOWE LINKI W RAZIE BŁĘDU) =====
+-- ===== RAYFIELD UI =====
 local Rayfield = nil
 local ok, result = pcall(function() return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() end)
-if ok and result then 
-    Rayfield = result 
-else
-    -- Fallback link (GitHub) jeśli sirius.menu pada
-    ok, result = pcall(function() return loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))() end)
-    if ok and result then Rayfield = result end
-end
-
-if not Rayfield then warn("[Sqays Hub] Failed to load Rayfield UI completely."); return end
+if ok and result then Rayfield = result end
+if not Rayfield then warn("[Sqays Hub] Failed to load Rayfield UI"); return end
 
 local Window = Rayfield:CreateWindow({
     Name = "Zoptymalizowany Sqays Hub",
@@ -420,7 +428,7 @@ TrialTab:CreateToggle({
         T.enabled = v
         if v and not T.schedulerRunning then
             task.spawn(trialScheduler)
-            Rayfield:Notify({Title = "Harmonogram włączony", Content = "Oczekiwanie na właściwy czas.", Duration = 5})
+            Rayfield:Notify({Title = "Harmonogram włączony", Content = "Oczekiwanie na właściwy czas (xx:29:10 lub xx:59:10).", Duration = 5})
         elseif not v then
             T.grinding = false
         end
@@ -436,12 +444,12 @@ TrialTab:CreateButton({
         if not T.grinding then
             task.spawn(grindTrial)
         end
-        Rayfield:Notify({Title = "Auto Trial", Content = "Rozpoczynanie walki!", Duration = 4})
+        Rayfield:Notify({Title = "Auto Trial", Content = "Rozpoczynanie walki na wybranym poziomie!", Duration = 4})
     end
 })
 
 TrialTab:CreateToggle({
-    Name = "🧪 Test Chodzenia i Bicia (Szuka wokół Ciebie)",
+    Name = "🧪 Test Chodzenia i Bicia (Szuka na żywo wokół)",
     CurrentValue = false,
     Callback = function(v)
         T.testing = v
