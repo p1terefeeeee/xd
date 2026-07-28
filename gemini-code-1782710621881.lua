@@ -1,5 +1,5 @@
 --[[
-	TRIAL AUTO-FARM  •  V33 (Kill switch + dzialajace skalowanie GUI + nowy UI)
+	TRIAL AUTO-FARM  •  V34 (Kill switch + skalowanie GUI + czytelna typografia)
 	- Combat: switch-on-animation (MobDeath = 112069791584815)
 	- 15s bez zabicia -> TP do Medium, 30s -> STOP combat
 	- Anti-stuck w trialu: podbij Y o 1 gdy postac stoi >1s
@@ -11,8 +11,9 @@
 	       jednolita logika: pauza combat -> 2s -> TP Realm3 -> jesli combat OFF -> savedPos
 	- V31: Timer2=59s -> auto-pause combat farm (odblokuj Y); po trialu na Realm3 -> auto-wznow
 	- V33: przycisk "WYLACZ SKRYPT CALKOWICIE" (kill switch, 2 klikniecia),
-	       dzialajace powiekszanie/pomniejszanie GUI (UIScale + uchwyt resize),
-	       nowy lekki interfejs (auto-layout, minimum instancji)
+	       dzialajace powiekszanie/pomniejszanie GUI (UIScale + uchwyt resize)
+	- V34: czytelniejsza typografia (Gotham Bold/Medium, kontur tekstu, wyzszy kontrast),
+	       3 poziomy wielkosci czcionki, karty sekcji, kropka statusu w pasku tytulu
 ]]
 
 -- ===== SERVICES =====
@@ -70,8 +71,9 @@ local config = {
 	CombatTweenSpeed = 0.3,
 	SelectedMobs = {},
 	GuiScale = 1,
-	GuiW = 360,
-	GuiH = 486
+	GuiW = 372,
+	GuiH = 500,
+	FontStep = 1
 }
 
 local savedPosition = nil
@@ -94,6 +96,7 @@ local function LoadConfig()
 		config.GuiScale        = tonumber(decoded.GuiScale) or config.GuiScale
 		config.GuiW            = tonumber(decoded.GuiW) or config.GuiW
 		config.GuiH            = tonumber(decoded.GuiH) or config.GuiH
+		config.FontStep        = tonumber(decoded.FontStep) or config.FontStep
 		if type(decoded.SavedPosition) == "table" and #decoded.SavedPosition >= 12 then
 			pcall(function() savedPosition = CFrame_new(table.unpack(decoded.SavedPosition)) end)
 		end
@@ -117,6 +120,7 @@ local function SaveConfig()
 			GuiScale = config.GuiScale,
 			GuiW = config.GuiW,
 			GuiH = config.GuiH,
+			FontStep = config.FontStep,
 			SavedPosition = savedPosition and {savedPosition:GetComponents()} or nil
 		}))
 	end)
@@ -1378,8 +1382,7 @@ ToggleCombatFarming = function(state)
 	end
 end
 
--- ===== V33: PELNE WYLACZENIE SKRYPTU (KILL SWITCH) =====
--- Rejestr polaczen GUI + globalna funkcja ubijajaca caly skrypt.
+-- ===== V33/V34: PELNE WYLACZENIE SKRYPTU (KILL SWITCH) =====
 local guiConnections = {}
 local function trackConn(c)
 	if c then table.insert(guiConnections, c) end
@@ -1473,25 +1476,30 @@ end
 -- Mozna tez wywolac recznie z konsoli: _G.TrialAutoFarmShutdown()
 _G.TrialAutoFarmShutdown = ShutdownScript
 
--- ===== INTERFEJS GUI (V33 - lekki, skalowalny) =====
+-- ===== INTERFEJS GUI (V34 - czytelna typografia, lekki UI) =====
 local function CreateGUI()
 	local UserInputService = game:GetService("UserInputService")
 
-	-- Paleta
+	-- Paleta o wyzszym kontrascie (WCAG-friendly na ciemnym tle)
 	local C = {
-		bg      = fromRGB(17, 18, 24),
-		panel   = fromRGB(27, 29, 38),
-		panel2  = fromRGB(36, 38, 50),
-		stroke  = fromRGB(64, 68, 92),
-		text    = fromRGB(238, 239, 246),
-		sub     = fromRGB(149, 152, 173),
-		green   = fromRGB(46, 204, 113),
-		orange  = fromRGB(230, 126, 34),
-		red     = fromRGB(231, 76, 60),
-		blue    = fromRGB(84, 122, 255),
-		purple  = fromRGB(162, 102, 222),
+		bg      = fromRGB(15, 16, 22),
+		panel   = fromRGB(26, 28, 38),
+		panel2  = fromRGB(38, 41, 55),
+		stroke  = fromRGB(70, 75, 100),
+		text    = fromRGB(247, 248, 253),
+		sub     = fromRGB(185, 190, 212),
+		dim     = fromRGB(150, 156, 180),
+		green   = fromRGB(35, 176, 96),
+		orange  = fromRGB(214, 112, 26),
+		red     = fromRGB(206, 56, 44),
+		blue    = fromRGB(70, 110, 245),
+		purple  = fromRGB(142, 88, 208),
 		teal    = fromRGB(0, 214, 186),
 	}
+
+	-- Czcionki: Gotham Bold/Medium = najlepsza czytelnosc w Roblox
+	local F_BOLD = Enum.Font.GothamBold
+	local F_MED  = Enum.Font.GothamMedium
 
 	local function corner(inst, r)
 		local c = Instance.new("UICorner")
@@ -1509,16 +1517,23 @@ local function CreateGUI()
 		return st
 	end
 
-	-- Lekki hover: JEDEN tween koloru, zero dodatkowych instancji (UIScale/UIStroke per przycisk)
+	-- Czytelnosc tekstu: kontur cienia bez dodatkowych instancji
+	local function readable(inst, strong)
+		inst.TextStrokeColor3 = fromRGB(0, 0, 0)
+		inst.TextStrokeTransparency = strong and 0.55 or 0.75
+		return inst
+	end
+
+	-- Lekki hover: JEDEN tween koloru, zero dodatkowych instancji
 	local function hoverable(btn)
 		btn.AutoButtonColor = false
 		local base
 		trackConn(btn.MouseEnter:Connect(function()
 			base = btn.BackgroundColor3
 			local l = Color3.new(
-				math.min(base.R + 0.09, 1),
-				math.min(base.G + 0.09, 1),
-				math.min(base.B + 0.09, 1)
+				math.min(base.R + 0.10, 1),
+				math.min(base.G + 0.10, 1),
+				math.min(base.B + 0.10, 1)
 			)
 			TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = l}):Play()
 		end))
@@ -1537,8 +1552,8 @@ local function CreateGUI()
 	screenGui.Parent = CoreGui
 
 	-- ===== GLOWNA RAMKA =====
-	local startW = math.clamp(tonumber(config.GuiW) or 360, 300, 700)
-	local startH = math.clamp(tonumber(config.GuiH) or 486, 200, 820)
+	local startW = math.clamp(tonumber(config.GuiW) or 372, 300, 700)
+	local startH = math.clamp(tonumber(config.GuiH) or 500, 220, 820)
 
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "Main"
@@ -1549,10 +1564,10 @@ local function CreateGUI()
 	mainFrame.Active = true
 	mainFrame.Draggable = false -- wlasny drag (Draggable kolidowal z uchwytem resize)
 	corner(mainFrame, 14)
-	addStroke(mainFrame, C.stroke, 1.2, 0.3)
+	addStroke(mainFrame, C.stroke, 1.4, 0.25)
 	mainFrame.Parent = screenGui
 
-	-- Skalowanie calego GUI (zwiekszanie / pomniejszanie)
+	-- Skalowanie calego GUI
 	local uiScale = Instance.new("UIScale")
 	uiScale.Scale = math.clamp(tonumber(config.GuiScale) or 1, 0.6, 2)
 	uiScale.Parent = mainFrame
@@ -1560,7 +1575,7 @@ local function CreateGUI()
 	-- ===== PASEK TYTULU =====
 	local title = Instance.new("Frame")
 	title.Name = "Title"
-	title.Size = UDim2_new(1, 0, 0, 44)
+	title.Size = UDim2_new(1, 0, 0, 46)
 	title.BackgroundColor3 = C.blue
 	title.BorderSizePixel = 0
 	title.Active = true
@@ -1568,10 +1583,10 @@ local function CreateGUI()
 	title.Parent = mainFrame
 
 	local titleGrad = Instance.new("UIGradient")
-	titleGrad.Rotation = 15
+	titleGrad.Rotation = 12
 	titleGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, C.blue),
-		ColorSequenceKeypoint.new(1, C.purple),
+		ColorSequenceKeypoint.new(0, fromRGB(48, 82, 214)),
+		ColorSequenceKeypoint.new(1, fromRGB(122, 70, 190)),
 	})
 	titleGrad.Parent = title
 
@@ -1579,53 +1594,66 @@ local function CreateGUI()
 	local titleFix = Instance.new("Frame")
 	titleFix.Size = UDim2_new(1, 0, 0, 14)
 	titleFix.Position = UDim2_new(0, 0, 1, -14)
-	titleFix.BackgroundColor3 = C.purple
-	titleFix.BackgroundTransparency = 0.15
+	titleFix.BackgroundColor3 = fromRGB(108, 72, 196)
 	titleFix.BorderSizePixel = 0
 	titleFix.ZIndex = 0
 	titleFix.Parent = title
 
+	-- Kropka statusu (zielona = cos dziala, szara = bezczynny)
+	local statusDot = Instance.new("Frame")
+	statusDot.Size = UDim2_new(0, 10, 0, 10)
+	statusDot.Position = UDim2_new(0, 14, 0.5, -5)
+	statusDot.BackgroundColor3 = C.dim
+	statusDot.BorderSizePixel = 0
+	corner(statusDot, 5)
+	statusDot.Parent = title
+
 	local titleText = Instance.new("TextLabel")
-	titleText.Size = UDim2_new(1, -150, 1, 0)
-	titleText.Position = UDim2_new(0, 14, 0, 0)
+	titleText.Size = UDim2_new(1, -170, 1, 0)
+	titleText.Position = UDim2_new(0, 32, 0, 0)
 	titleText.BackgroundTransparency = 1
 	titleText.RichText = true
-	titleText.Text = "TRIAL AUTO-FARM  <font size=\"12\" color=\"rgb(226,228,255)\">V33</font>"
+	titleText.Text = "TRIAL AUTO-FARM <font color=\"rgb(214,220,255)\">V34</font>"
 	titleText.TextColor3 = fromRGB(255, 255, 255)
 	titleText.TextXAlignment = Enum.TextXAlignment.Left
-	titleText.Font = Enum.Font.GothamBold
+	titleText.Font = F_BOLD
 	titleText.TextSize = 16
 	titleText.Parent = title
+	readable(titleText, true)
 
 	-- Male przyciski w pasku tytulu
 	local function titleButton(txt, xOff, w)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2_new(0, w or 26, 0, 26)
+		b.Size = UDim2_new(0, w or 28, 0, 28)
 		b.Position = UDim2_new(1, xOff, 0, 9)
-		b.BackgroundColor3 = C.panel2
-		b.BackgroundTransparency = 0.15
+		b.BackgroundColor3 = fromRGB(24, 26, 40)
+		b.BackgroundTransparency = 0.25
 		b.Text = txt
 		b.TextColor3 = fromRGB(255, 255, 255)
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 15
+		b.Font = F_BOLD
+		b.TextSize = 16
 		b.BorderSizePixel = 0
-		corner(b, 7)
+		corner(b, 8)
 		b.Parent = title
 		hoverable(b)
+		readable(b, true)
 		return b
 	end
 
-	local minusBtn   = titleButton("-", -136)
+	local minusBtn = titleButton("-", -140)
+
 	local scaleLabel = Instance.new("TextLabel")
-	scaleLabel.Size = UDim2_new(0, 44, 0, 26)
-	scaleLabel.Position = UDim2_new(1, -108, 0, 9)
+	scaleLabel.Size = UDim2_new(0, 46, 0, 28)
+	scaleLabel.Position = UDim2_new(1, -110, 0, 9)
 	scaleLabel.BackgroundTransparency = 1
 	scaleLabel.Text = "100%"
-	scaleLabel.TextColor3 = fromRGB(235, 236, 255)
-	scaleLabel.Font = Enum.Font.GothamSemibold
-	scaleLabel.TextSize = 12
+	scaleLabel.TextColor3 = fromRGB(240, 242, 255)
+	scaleLabel.Font = F_BOLD
+	scaleLabel.TextSize = 13
 	scaleLabel.Parent = title
-	local plusBtn = titleButton("+", -62)
+	readable(scaleLabel, true)
+
+	local plusBtn = titleButton("+", -64)
 	local minBtn  = titleButton("\226\128\148", -32)
 
 	local function setScale(v, save)
@@ -1641,36 +1669,39 @@ local function CreateGUI()
 	trackConn(plusBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale + 0.1) end))
 
 	-- ===== ZAKLADKI =====
-	local tabRow = Instance.new("Frame")
-	tabRow.Size = UDim2_new(1, -24, 0, 32)
-	tabRow.Position = UDim2_new(0, 12, 0, 52)
-	tabRow.BackgroundTransparency = 1
-	tabRow.Parent = mainFrame
+	local tabBar = Instance.new("Frame")
+	tabBar.Size = UDim2_new(1, -24, 0, 36)
+	tabBar.Position = UDim2_new(0, 12, 0, 54)
+	tabBar.BackgroundColor3 = C.panel
+	tabBar.BorderSizePixel = 0
+	corner(tabBar, 10)
+	tabBar.Parent = mainFrame
 
-	local function makeTab(txt, xScale, xOff)
+	local function makeTab(txt, xScale)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2_new(0.5, -4, 1, 0)
-		b.Position = UDim2_new(xScale, xOff, 0, 0)
+		b.Size = UDim2_new(0.5, -6, 1, -8)
+		b.Position = UDim2_new(xScale, xScale == 0 and 4 or 2, 0, 4)
 		b.Text = txt
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 13
+		b.Font = F_BOLD
+		b.TextSize = 14
 		b.TextColor3 = C.text
-		b.BackgroundColor3 = C.panel2
+		b.BackgroundColor3 = C.panel
 		b.BorderSizePixel = 0
 		b.AutoButtonColor = false
 		corner(b, 8)
-		b.Parent = tabRow
+		b.Parent = tabBar
+		readable(b)
 		return b
 	end
 
-	local mainTabBtn = makeTab("Sciezka Farmu", 0, 0)
-	local settingsTabBtn = makeTab("Ustawienia", 0.5, 4)
+	local mainTabBtn = makeTab("SCIEZKA FARMU", 0)
+	local settingsTabBtn = makeTab("USTAWIENIA", 0.5)
 
-	-- ===== KONTENERY ZAKLADEK (auto-layout => dziala przy kazdym rozmiarze) =====
+	-- ===== KONTENERY ZAKLADEK =====
 	local function makeScroll()
 		local f = Instance.new("ScrollingFrame")
-		f.Size = UDim2_new(1, -24, 1, -122)
-		f.Position = UDim2_new(0, 12, 0, 92)
+		f.Size = UDim2_new(1, -24, 1, -146)
+		f.Position = UDim2_new(0, 12, 0, 98)
 		f.BackgroundTransparency = 1
 		f.BorderSizePixel = 0
 		f.ScrollBarThickness = 4
@@ -1682,12 +1713,12 @@ local function CreateGUI()
 
 		local l = Instance.new("UIListLayout")
 		l.SortOrder = Enum.SortOrder.LayoutOrder
-		l.Padding = UDim.new(0, 8)
+		l.Padding = UDim.new(0, 10)
 		l.Parent = f
 
 		local p = Instance.new("UIPadding")
-		p.PaddingBottom = UDim.new(0, 10)
-		p.PaddingRight = UDim.new(0, 4)
+		p.PaddingBottom = UDim.new(0, 12)
+		p.PaddingRight = UDim.new(0, 6)
 		p.Parent = f
 		return f
 	end
@@ -1702,26 +1733,60 @@ local function CreateGUI()
 		return ord
 	end
 
-	-- ===== STOPKA (stale widoczny kill switch) =====
-	local footer = Instance.new("Frame")
-	footer.Size = UDim2_new(1, -24, 0, 34)
-	footer.Position = UDim2_new(0, 12, 1, -44)
-	footer.BackgroundTransparency = 1
-	footer.Parent = mainFrame
+	-- ===== KARTA SEKCJI =====
+	local function makeCard(parent, headerTxt, accent)
+		local card = Instance.new("Frame")
+		card.Size = UDim2_new(1, 0, 0, 0)
+		card.AutomaticSize = Enum.AutomaticSize.Y
+		card.BackgroundColor3 = C.panel
+		card.BorderSizePixel = 0
+		card.LayoutOrder = nextOrd()
+		corner(card, 12)
+		addStroke(card, C.stroke, 1, 0.65)
+		card.Parent = parent
 
-	local killBtn = Instance.new("TextButton")
-	killBtn.Name = "KillSwitch"
-	killBtn.Size = UDim2_new(1, -26, 1, 0)
-	killBtn.BackgroundColor3 = C.red
-	killBtn.Text = "\240\159\155\145  WYLACZ SKRYPT CALKOWICIE"
-	killBtn.TextColor3 = fromRGB(255, 255, 255)
-	killBtn.Font = Enum.Font.GothamBold
-	killBtn.TextSize = 13
-	killBtn.BorderSizePixel = 0
-	killBtn.AutoButtonColor = false
-	corner(killBtn, 9)
-	killBtn.Parent = footer
-	hoverable(killBtn)
+		local p = Instance.new("UIPadding")
+		p.PaddingTop = UDim.new(0, 10)
+		p.PaddingBottom = UDim.new(0, 10)
+		p.PaddingLeft = UDim.new(0, 10)
+		p.PaddingRight = UDim.new(0, 10)
+		p.Parent = card
+
+		local l = Instance.new("UIListLayout")
+		l.SortOrder = Enum.SortOrder.LayoutOrder
+		l.Padding = UDim.new(0, 8)
+		l.Parent = card
+
+		if headerTxt then
+			local head = Instance.new("Frame")
+			head.Size = UDim2_new(1, 0, 0, 18)
+			head.LayoutOrder = nextOrd()
+			head.BackgroundTransparency = 1
+			head.Parent = card
+
+			local bar = Instance.new("Frame")
+			bar.Size = UDim2_new(0, 3, 0, 14)
+			bar.Position = UDim2_new(0, 0, 0, 2)
+			bar.BackgroundColor3 = accent or C.blue
+			bar.BorderSizePixel = 0
+			corner(bar, 2)
+			bar.Parent = head
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2_new(1, -12, 1, 0)
+			lbl.Position = UDim2_new(0, 12, 0, 0)
+			lbl.BackgroundTransparency = 1
+			lbl.Text = headerTxt
+			lbl.TextColor3 = accent or C.sub
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.Font = F_BOLD
+			lbl.TextSize = 13
+			lbl.Parent = head
+			readable(lbl)
+		end
+
+		return card
+	end
 
 	-- ===== FABRYKI ELEMENTOW =====
 	local function actionButton(parent, h, txt, color, textSize)
@@ -1729,70 +1794,74 @@ local function CreateGUI()
 		b.Size = UDim2_new(1, 0, 0, h)
 		b.LayoutOrder = nextOrd()
 		b.Text = txt
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = textSize or 14
+		b.Font = F_BOLD
+		b.TextSize = textSize or 15
 		b.TextColor3 = fromRGB(255, 255, 255)
 		b.BackgroundColor3 = color
 		b.BorderSizePixel = 0
 		b.AutoButtonColor = false
-		corner(b, 9)
+		corner(b, 10)
 		b.Parent = parent
 		hoverable(b)
+		readable(b, true)
 		return b
 	end
 
-	local function sectionLabel(parent, txt, col)
-		local l = Instance.new("TextLabel")
-		l.Size = UDim2_new(1, 0, 0, 18)
-		l.LayoutOrder = nextOrd()
-		l.BackgroundTransparency = 1
-		l.Text = txt
-		l.TextColor3 = col or C.sub
-		l.TextXAlignment = Enum.TextXAlignment.Left
-		l.Font = Enum.Font.GothamBold
-		l.TextSize = 12
-		l.Parent = parent
-		return l
-	end
+	-- ===== STOPKA: KILL SWITCH (zawsze widoczny) =====
+	local footer = Instance.new("Frame")
+	footer.Size = UDim2_new(1, -24, 0, 38)
+	footer.Position = UDim2_new(0, 12, 1, -48)
+	footer.BackgroundTransparency = 1
+	footer.Parent = mainFrame
+
+	local killBtn = Instance.new("TextButton")
+	killBtn.Name = "KillSwitch"
+	killBtn.Size = UDim2_new(1, -28, 1, 0)
+	killBtn.BackgroundColor3 = C.red
+	killBtn.Text = "\240\159\155\145  WYLACZ SKRYPT CALKOWICIE"
+	killBtn.TextColor3 = fromRGB(255, 255, 255)
+	killBtn.Font = F_BOLD
+	killBtn.TextSize = 14
+	killBtn.BorderSizePixel = 0
+	killBtn.AutoButtonColor = false
+	corner(killBtn, 10)
+	killBtn.Parent = footer
+	hoverable(killBtn)
+	readable(killBtn, true)
 
 	-- ===== ZAKLADKA: SCIEZKA FARMU =====
-	local statusCard = Instance.new("Frame")
-	statusCard.Size = UDim2_new(1, 0, 0, 48)
-	statusCard.LayoutOrder = nextOrd()
-	statusCard.BackgroundColor3 = C.panel
-	statusCard.BorderSizePixel = 0
-	corner(statusCard, 10)
-	addStroke(statusCard, C.teal, 1, 0.6)
-	statusCard.Parent = mainTabFrame
+	local statusCard = makeCard(mainTabFrame, "STATUS TRIALA", C.teal)
 
 	singleTimerLabelRef = Instance.new("TextLabel")
-	singleTimerLabelRef.Size = UDim2_new(1, -20, 1, 0)
-	singleTimerLabelRef.Position = UDim2_new(0, 10, 0, 0)
+	singleTimerLabelRef.Size = UDim2_new(1, 0, 0, 34)
+	singleTimerLabelRef.LayoutOrder = nextOrd()
 	singleTimerLabelRef.BackgroundTransparency = 1
 	singleTimerLabelRef.Text = "Inicjalizacja systemu timerow..."
 	singleTimerLabelRef.TextColor3 = C.teal
 	singleTimerLabelRef.TextXAlignment = Enum.TextXAlignment.Left
-	singleTimerLabelRef.Font = Enum.Font.GothamBold
-	singleTimerLabelRef.TextSize = 12
+	singleTimerLabelRef.TextYAlignment = Enum.TextYAlignment.Top
+	singleTimerLabelRef.Font = F_BOLD
+	singleTimerLabelRef.TextSize = 14
 	singleTimerLabelRef.TextWrapped = true
 	singleTimerLabelRef.Parent = statusCard
+	readable(singleTimerLabelRef, true)
 
-	sectionLabel(mainTabFrame, "TRIAL")
-	local trialBtn   = actionButton(mainTabFrame, 36, "Trial: " .. config.SelectedTrial, C.blue, 14)
-	local savePosBtn = actionButton(mainTabFrame, 34, "\240\159\147\140 Zapisz Pozycje Bazy", C.purple, 13)
-	farmBtnRef       = actionButton(mainTabFrame, 46, "\226\150\182 Start AutoFarm", C.green, 17)
-	local chestBtn   = actionButton(mainTabFrame, 34, "\226\157\140 Auto Chest (OFF)", C.red, 13)
+	local trialCard = makeCard(mainTabFrame, "TRIAL", C.blue)
+	local trialBtn   = actionButton(trialCard, 38, "Trial: " .. config.SelectedTrial, C.blue, 15)
+	local savePosBtn = actionButton(trialCard, 34, "\240\159\147\140  Zapisz Pozycje Bazy", C.purple, 14)
+	farmBtnRef       = actionButton(trialCard, 48, "\226\150\182 Start AutoFarm", C.green, 18)
+	local chestBtn   = actionButton(trialCard, 34, "Auto Chest: OFF", C.red, 14)
 
-	sectionLabel(mainTabFrame, "COMBAT FARM", fromRGB(255, 130, 130))
-	combatBtnRef = actionButton(mainTabFrame, 40, "\226\150\182 Start Combat Farm", C.green, 15)
+	local combatCard = makeCard(mainTabFrame, "COMBAT FARM", fromRGB(255, 128, 128))
+	combatBtnRef = actionButton(combatCard, 42, "\226\150\182 Start Combat Farm", C.green, 16)
 
 	local statusPill = Instance.new("Frame")
-	statusPill.Size = UDim2_new(1, 0, 0, 26)
+	statusPill.Size = UDim2_new(1, 0, 0, 28)
 	statusPill.LayoutOrder = nextOrd()
-	statusPill.BackgroundColor3 = C.panel
+	statusPill.BackgroundColor3 = C.panel2
 	statusPill.BorderSizePixel = 0
 	corner(statusPill, 8)
-	statusPill.Parent = mainTabFrame
+	statusPill.Parent = combatCard
 
 	combatStatusLabelRef = Instance.new("TextLabel")
 	combatStatusLabelRef.Size = UDim2_new(1, -16, 1, 0)
@@ -1801,79 +1870,86 @@ local function CreateGUI()
 	combatStatusLabelRef.Text = "Status: Nieaktywny"
 	combatStatusLabelRef.TextColor3 = C.sub
 	combatStatusLabelRef.TextXAlignment = Enum.TextXAlignment.Left
-	combatStatusLabelRef.Font = Enum.Font.GothamSemibold
-	combatStatusLabelRef.TextSize = 12
+	combatStatusLabelRef.Font = F_MED
+	combatStatusLabelRef.TextSize = 13
 	combatStatusLabelRef.Parent = statusPill
+	readable(combatStatusLabelRef)
 
 	local function UpdateChestButton()
 		if config.AutoChestType == "None" then
-			chestBtn.Text = "\226\157\140 Auto Chest (OFF)"
+			chestBtn.Text = "Auto Chest: OFF"
 			chestBtn.BackgroundColor3 = C.red
 		elseif config.AutoChestType == "T1" then
-			chestBtn.Text = "\240\159\147\166 Auto Chest (T1)"
+			chestBtn.Text = "Auto Chest: T1"
 			chestBtn.BackgroundColor3 = C.green
 		else
-			chestBtn.Text = "\240\159\142\129 Auto Chest (T2)"
+			chestBtn.Text = "Auto Chest: T2"
 			chestBtn.BackgroundColor3 = C.purple
 		end
 	end
 	UpdateChestButton()
 
 	-- ===== ZAKLADKA: USTAWIENIA =====
+	local paramsCard = makeCard(settingsTabFrame, "PARAMETRY FARMU", C.blue)
+
 	local function CreateInput(labelStr, default)
 		local holder = Instance.new("Frame")
-		holder.Size = UDim2_new(1, 0, 0, 48)
+		holder.Size = UDim2_new(1, 0, 0, 52)
 		holder.LayoutOrder = nextOrd()
 		holder.BackgroundTransparency = 1
-		holder.Parent = settingsTabFrame
+		holder.Parent = paramsCard
 
 		local label = Instance.new("TextLabel")
-		label.Size = UDim2_new(1, 0, 0, 15)
+		label.Size = UDim2_new(1, 0, 0, 16)
 		label.BackgroundTransparency = 1
 		label.Text = labelStr
 		label.TextColor3 = C.sub
 		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.Font = Enum.Font.GothamSemibold
-		label.TextSize = 11
+		label.Font = F_MED
+		label.TextSize = 12
 		label.Parent = holder
+		readable(label)
 
 		local box = Instance.new("TextBox")
-		box.Size = UDim2_new(1, 0, 0, 29)
-		box.Position = UDim2_new(0, 0, 0, 17)
+		box.Size = UDim2_new(1, 0, 0, 32)
+		box.Position = UDim2_new(0, 0, 0, 19)
 		box.BackgroundColor3 = C.panel2
 		box.TextColor3 = C.text
+		box.PlaceholderColor3 = C.dim
 		box.Text = default
-		box.Font = Enum.Font.Gotham
-		box.TextSize = 13
+		box.Font = F_BOLD
+		box.TextSize = 14
 		box.ClearTextOnFocus = false
 		box.BorderSizePixel = 0
 		corner(box, 8)
+		addStroke(box, C.stroke, 1, 0.55)
 		box.Parent = holder
+		readable(box)
 		return box
 	end
 
-	sectionLabel(settingsTabFrame, "PARAMETRY FARMU")
-	local speedBox    = CreateInput("Predkosc lotu (Trial):", tostring(config.Speed))
-	local cooldownBox = CreateInput("Cooldown po zabiciu:", tostring(config.Cooldown))
-	local waveWaitBox = CreateInput("Czas na nowa fale:", tostring(config.WaveWaitTime))
-	local ghostYBox   = CreateInput("Wysokosc Ghost Mode (Y):", tostring(config.GhostModeY))
-	local startSecBox = CreateInput("Teleport gdy <= X sek (otwarty portal):", tostring(config.TimeToStartSec))
-	local combatYBox  = CreateInput("Wysokosc Combat Ghost (Y):", tostring(config.CombatGhostY))
+	local speedBox    = CreateInput("Predkosc lotu (Trial)", tostring(config.Speed))
+	local cooldownBox = CreateInput("Cooldown po zabiciu", tostring(config.Cooldown))
+	local waveWaitBox = CreateInput("Czas na nowa fale", tostring(config.WaveWaitTime))
+	local ghostYBox   = CreateInput("Wysokosc Ghost Mode (Y)", tostring(config.GhostModeY))
+	local startSecBox = CreateInput("Teleport gdy <= X sek (otwarty portal)", tostring(config.TimeToStartSec))
+	local combatYBox  = CreateInput("Wysokosc Combat Ghost (Y)", tostring(config.CombatGhostY))
 
 	local combatInfoLabel = Instance.new("TextLabel")
 	combatInfoLabel.Size = UDim2_new(1, 0, 0, 34)
 	combatInfoLabel.LayoutOrder = nextOrd()
 	combatInfoLabel.BackgroundTransparency = 1
-	combatInfoLabel.Text = "Combat Farm uzywa predkosci/cooldownu Triala, ale ma WLASNA wysokosc (Combat Ghost Y)."
-	combatInfoLabel.TextColor3 = C.sub
+	combatInfoLabel.Text = "Combat Farm uzywa predkosci i cooldownu Triala, ale ma WLASNA wysokosc (Combat Ghost Y)."
+	combatInfoLabel.TextColor3 = C.dim
 	combatInfoLabel.TextWrapped = true
 	combatInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
 	combatInfoLabel.TextYAlignment = Enum.TextYAlignment.Top
-	combatInfoLabel.Font = Enum.Font.Gotham
-	combatInfoLabel.TextSize = 11
-	combatInfoLabel.Parent = settingsTabFrame
+	combatInfoLabel.Font = F_MED
+	combatInfoLabel.TextSize = 12
+	combatInfoLabel.Parent = paramsCard
+	readable(combatInfoLabel)
 
-	sectionLabel(settingsTabFrame, "POZYCJA BAZY")
+	local posCard = makeCard(settingsTabFrame, "POZYCJA BAZY", C.purple)
 	savedCoordsLabelRef = Instance.new("TextLabel")
 	savedCoordsLabelRef.Size = UDim2_new(1, 0, 0, 20)
 	savedCoordsLabelRef.LayoutOrder = nextOrd()
@@ -1881,74 +1957,79 @@ local function CreateGUI()
 	savedCoordsLabelRef.Text = savedPosition
 		and string.format("Zapisane Kordynaty: %.1f, %.1f, %.1f", savedPosition.X, savedPosition.Y, savedPosition.Z)
 		or "Zapisane Kordynaty: Brak"
-	savedCoordsLabelRef.TextColor3 = C.purple
+	savedCoordsLabelRef.TextColor3 = fromRGB(198, 160, 246)
 	savedCoordsLabelRef.TextXAlignment = Enum.TextXAlignment.Left
-	savedCoordsLabelRef.Font = Enum.Font.GothamSemibold
-	savedCoordsLabelRef.TextSize = 12
-	savedCoordsLabelRef.Parent = settingsTabFrame
+	savedCoordsLabelRef.Font = F_BOLD
+	savedCoordsLabelRef.TextSize = 13
+	savedCoordsLabelRef.Parent = posCard
+	readable(savedCoordsLabelRef)
 
-	local clearSavedPosBtn = actionButton(settingsTabFrame, 28, "\240\159\151\145 Usun zapisane kordynaty", C.red, 12)
+	local clearSavedPosBtn = actionButton(posCard, 30, "Usun zapisane kordynaty", C.red, 13)
 
-	sectionLabel(settingsTabFrame, "MOBY DO FARMIENIA")
+	local mobCard = makeCard(settingsTabFrame, "MOBY DO FARMIENIA", C.green)
 	local mobContainer = Instance.new("ScrollingFrame")
 	mobContainer.Name = "MobContainer"
-	mobContainer.Size = UDim2_new(1, 0, 0, 140)
+	mobContainer.Size = UDim2_new(1, 0, 0, 148)
 	mobContainer.LayoutOrder = nextOrd()
-	mobContainer.BackgroundColor3 = C.panel
+	mobContainer.BackgroundColor3 = fromRGB(20, 22, 30)
 	mobContainer.BorderSizePixel = 0
 	mobContainer.ScrollBarThickness = 4
 	mobContainer.ScrollBarImageColor3 = C.stroke
 	mobContainer.CanvasSize = UDim2_new(0, 0, 0, 0)
 	mobContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	corner(mobContainer, 9)
-	mobContainer.Parent = settingsTabFrame
+	mobContainer.Parent = mobCard
 
 	local mobPad = Instance.new("UIPadding")
-	mobPad.PaddingTop = UDim.new(0, 6)
-	mobPad.PaddingBottom = UDim.new(0, 6)
-	mobPad.PaddingLeft = UDim.new(0, 6)
-	mobPad.PaddingRight = UDim.new(0, 6)
+	mobPad.PaddingTop = UDim.new(0, 7)
+	mobPad.PaddingBottom = UDim.new(0, 7)
+	mobPad.PaddingLeft = UDim.new(0, 7)
+	mobPad.PaddingRight = UDim.new(0, 7)
 	mobPad.Parent = mobContainer
 
 	local mobListLayout = Instance.new("UIGridLayout")
-	mobListLayout.CellSize = UDim2_new(0.325, -6, 0, 28)
+	mobListLayout.CellSize = UDim2_new(0.5, -5, 0, 30)
 	mobListLayout.CellPadding = UDim2_new(0, 6, 0, 6)
 	mobListLayout.Parent = mobContainer
 
+	local MOB_OFF = fromRGB(58, 44, 52)
 	for _, mobName in ipairs(MOBS) do
 		local btn = Instance.new("TextButton")
 		btn.Name = "Mob_" .. mobName
 		btn.Text = mobName
-		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 10
+		btn.Font = F_BOLD
+		btn.TextSize = 12
+		btn.TextScaled = false
 		btn.TextColor3 = fromRGB(255, 255, 255)
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		local isActive = config.SelectedMobs[mobName] == true
-		btn.BackgroundColor3 = isActive and C.green or fromRGB(120, 48, 48)
-		corner(btn, 6)
+		btn.BackgroundColor3 = isActive and C.green or MOB_OFF
+		corner(btn, 7)
 		btn.Parent = mobContainer
+		readable(btn, true)
 		trackConn(btn.MouseButton1Click:Connect(function()
 			config.SelectedMobs[mobName] = not (config.SelectedMobs[mobName] or false)
-			btn.BackgroundColor3 = config.SelectedMobs[mobName] and C.green or fromRGB(120, 48, 48)
+			btn.BackgroundColor3 = config.SelectedMobs[mobName] and C.green or MOB_OFF
 			SaveConfig()
 		end))
 	end
 
-	sectionLabel(settingsTabFrame, "INTERFEJS")
+	local uiCard = makeCard(settingsTabFrame, "INTERFEJS", C.teal)
+
 	local scaleRow = Instance.new("Frame")
-	scaleRow.Size = UDim2_new(1, 0, 0, 30)
+	scaleRow.Size = UDim2_new(1, 0, 0, 32)
 	scaleRow.LayoutOrder = nextOrd()
 	scaleRow.BackgroundTransparency = 1
-	scaleRow.Parent = settingsTabFrame
+	scaleRow.Parent = uiCard
 
-	local function scaleStepBtn(txt, xScale, xOff)
+	local function rowButton(txt, xScale, xOff)
 		local b = Instance.new("TextButton")
 		b.Size = UDim2_new(0.5, -4, 1, 0)
 		b.Position = UDim2_new(xScale, xOff, 0, 0)
 		b.Text = txt
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 12
+		b.Font = F_BOLD
+		b.TextSize = 13
 		b.TextColor3 = fromRGB(255, 255, 255)
 		b.BackgroundColor3 = C.panel2
 		b.BorderSizePixel = 0
@@ -1956,15 +2037,46 @@ local function CreateGUI()
 		corner(b, 8)
 		b.Parent = scaleRow
 		hoverable(b)
+		readable(b)
 		return b
 	end
-	local scaleDownBtn = scaleStepBtn("- Pomniejsz GUI", 0, 0)
-	local scaleUpBtn   = scaleStepBtn("+ Powieksz GUI", 0.5, 4)
+	local scaleDownBtn = rowButton("-  Pomniejsz GUI", 0, 0)
+	local scaleUpBtn   = rowButton("+  Powieksz GUI", 0.5, 4)
 
-	local resetBtn = actionButton(settingsTabFrame, 28, "Reset rozmiaru i skali GUI", C.panel2, 12)
-	local hideGuiBtn = actionButton(settingsTabFrame, 28, "Ukryj GUI (pokaz ponownie: klawisz L)", C.panel2, 12)
+	local fontBtn    = actionButton(uiCard, 32, "Czcionka: Standard", C.panel2, 13)
+	local resetBtn   = actionButton(uiCard, 30, "Reset rozmiaru i skali GUI", C.panel2, 13)
+	local hideGuiBtn = actionButton(uiCard, 30, "Ukryj GUI (pokaz: klawisz L)", C.panel2, 13)
 
-	-- ===== LOGIKA ZAKLADEK / MINIMALIZACJI =====
+	-- ===== SYSTEM POWIEKSZANIA CZCIONKI =====
+	-- Zapamietuje bazowy TextSize kazdego elementu i dodaje wybrany bonus.
+	local textNodes = {}
+	for _, d in ipairs(mainFrame:GetDescendants()) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			textNodes[#textNodes + 1] = {obj = d, base = d.TextSize}
+		end
+	end
+
+	local FONT_STEPS = {0, 2, 4}
+	local FONT_NAMES = {"Standard", "Duza", "Bardzo duza"}
+	local fontStep = math.clamp(tonumber(config.FontStep) or 1, 1, 3)
+
+	local function applyFont(step, save)
+		fontStep = math.clamp(step, 1, 3)
+		local bonus = FONT_STEPS[fontStep]
+		for _, n in ipairs(textNodes) do
+			if n.obj.Parent then n.obj.TextSize = n.base + bonus end
+		end
+		fontBtn.Text = "Czcionka: " .. FONT_NAMES[fontStep]
+		config.FontStep = fontStep
+		if save ~= false then SaveConfig() end
+	end
+	applyFont(fontStep, false)
+
+	trackConn(fontBtn.MouseButton1Click:Connect(function()
+		applyFont(fontStep % 3 + 1)
+	end))
+
+	-- ===== ZAKLADKI / MINIMALIZACJA =====
 	local currentTabIsMain = true
 	local isMinimized = false
 	local expandedSize = mainFrame.Size
@@ -1973,10 +2085,10 @@ local function CreateGUI()
 		currentTabIsMain = main
 		mainTabFrame.Visible = main
 		settingsTabFrame.Visible = not main
-		mainTabBtn.BackgroundColor3 = main and C.blue or C.panel2
-		settingsTabBtn.BackgroundColor3 = main and C.panel2 or C.blue
-		mainTabBtn.TextColor3 = main and fromRGB(255, 255, 255) or C.sub
-		settingsTabBtn.TextColor3 = main and C.sub or fromRGB(255, 255, 255)
+		mainTabBtn.BackgroundColor3 = main and C.blue or C.panel
+		settingsTabBtn.BackgroundColor3 = main and C.panel or C.blue
+		mainTabBtn.TextColor3 = main and fromRGB(255, 255, 255) or C.dim
+		settingsTabBtn.TextColor3 = main and C.dim or fromRGB(255, 255, 255)
 	end
 	trackConn(mainTabBtn.MouseButton1Click:Connect(function() setTab(true) end))
 	trackConn(settingsTabBtn.MouseButton1Click:Connect(function() setTab(false) end))
@@ -1985,13 +2097,13 @@ local function CreateGUI()
 
 	local function setMinimized(min)
 		isMinimized = min
-		tabRow.Visible = not min
+		tabBar.Visible = not min
 		footer.Visible = not min
 		if resizeHandle then resizeHandle.Visible = not min end
 		if min then
 			mainTabFrame.Visible = false
 			settingsTabFrame.Visible = false
-			mainFrame.Size = UDim2_new(0, expandedSize.X.Offset, 0, 44)
+			mainFrame.Size = UDim2_new(0, expandedSize.X.Offset, 0, 46)
 			minBtn.Text = "+"
 		else
 			mainFrame.Size = expandedSize
@@ -2001,23 +2113,24 @@ local function CreateGUI()
 	end
 	trackConn(minBtn.MouseButton1Click:Connect(function() setMinimized(not isMinimized) end))
 
-	-- ===== UCHWYT ZMIANY ROZMIARU (dziala z myszka i dotykiem) =====
+	-- ===== UCHWYT ZMIANY ROZMIARU =====
 	resizeHandle = Instance.new("TextButton")
 	resizeHandle.Name = "ResizeHandle"
-	resizeHandle.Size = UDim2_new(0, 20, 0, 20)
-	resizeHandle.Position = UDim2_new(1, -22, 1, -22)
+	resizeHandle.Size = UDim2_new(0, 22, 0, 22)
+	resizeHandle.Position = UDim2_new(1, -24, 1, -24)
 	resizeHandle.BackgroundColor3 = C.panel2
 	resizeHandle.Text = "\226\151\162"
 	resizeHandle.TextColor3 = C.sub
-	resizeHandle.Font = Enum.Font.GothamBold
-	resizeHandle.TextSize = 12
+	resizeHandle.Font = F_BOLD
+	resizeHandle.TextSize = 13
 	resizeHandle.BorderSizePixel = 0
 	resizeHandle.AutoButtonColor = false
 	resizeHandle.ZIndex = 8
-	corner(resizeHandle, 6)
+	corner(resizeHandle, 7)
 	resizeHandle.Parent = mainFrame
+	hoverable(resizeHandle)
 
-	-- ===== DRAG (pasek tytulu) + RESIZE (uchwyt) w jednym systemie inputu =====
+	-- ===== DRAG + RESIZE =====
 	local dragging, dragStart, dragStartPos = false, nil, nil
 	local resizing, resizeStart, resizeStartSize = false, nil, nil
 
@@ -2078,6 +2191,15 @@ local function CreateGUI()
 		end
 	end))
 
+	-- ===== KROPKA STATUSU (lekko: co 1 s, bez per-klatka) =====
+	task.spawn(function()
+		while _G.TrialAutoFarmRunning and statusDot.Parent do
+			local active = config.IsFarming or combatConfig.IsCombatFarming
+			statusDot.BackgroundColor3 = active and fromRGB(70, 235, 140) or C.dim
+			task.wait(1)
+		end
+	end)
+
 	-- ===== POLACZENIA USTAWIEN =====
 	trackConn(speedBox.FocusLost:Connect(function() config.Speed = tonumber(speedBox.Text) or config.Speed; speedBox.Text = tostring(config.Speed); SaveConfig() end))
 	trackConn(cooldownBox.FocusLost:Connect(function() config.Cooldown = tonumber(cooldownBox.Text) or config.Cooldown; cooldownBox.Text = tostring(config.Cooldown); SaveConfig() end))
@@ -2090,10 +2212,11 @@ local function CreateGUI()
 	trackConn(scaleUpBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale + 0.1) end))
 
 	trackConn(resetBtn.MouseButton1Click:Connect(function()
-		setScale(1)
-		mainFrame.Size = UDim2_new(0, 360, 0, 486)
+		setScale(1, false)
+		applyFont(1, false)
+		mainFrame.Size = UDim2_new(0, 372, 0, 500)
 		expandedSize = mainFrame.Size
-		config.GuiW, config.GuiH = 360, 486
+		config.GuiW, config.GuiH = 372, 500
 		SaveConfig()
 	end))
 
@@ -2111,7 +2234,7 @@ local function CreateGUI()
 		clearSavedPosBtn.BackgroundColor3 = C.green
 		task.delay(1.5, function()
 			if clearSavedPosBtn.Parent then
-				clearSavedPosBtn.Text = "\240\159\151\145 Usun zapisane kordynaty"
+				clearSavedPosBtn.Text = "Usun zapisane kordynaty"
 				clearSavedPosBtn.BackgroundColor3 = C.red
 			end
 		end)
@@ -2138,7 +2261,7 @@ local function CreateGUI()
 		savePosBtn.BackgroundColor3 = C.green
 		task.delay(1.5, function()
 			if savePosBtn.Parent then
-				savePosBtn.Text = "\240\159\147\140 Zapisz Pozycje Bazy"
+				savePosBtn.Text = "\240\159\147\140  Zapisz Pozycje Bazy"
 				savePosBtn.BackgroundColor3 = C.purple
 			end
 		end)
