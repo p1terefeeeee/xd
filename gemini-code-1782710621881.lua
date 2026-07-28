@@ -1,5 +1,5 @@
 --[[
-	TRIAL AUTO-FARM  •  V32 (Combat stabilny + fix mobow + resize GUI)
+	TRIAL AUTO-FARM  •  V33 (Kill switch + dzialajace skalowanie GUI + nowy UI)
 	- Combat: switch-on-animation (MobDeath = 112069791584815)
 	- 15s bez zabicia -> TP do Medium, 30s -> STOP combat
 	- Anti-stuck w trialu: podbij Y o 1 gdy postac stoi >1s
@@ -10,6 +10,9 @@
 	- V30: detekcja po pozycji Leave (879,10,13443) + Realm3 spawn (1019,4,7801)
 	       jednolita logika: pauza combat -> 2s -> TP Realm3 -> jesli combat OFF -> savedPos
 	- V31: Timer2=59s -> auto-pause combat farm (odblokuj Y); po trialu na Realm3 -> auto-wznow
+	- V33: przycisk "WYLACZ SKRYPT CALKOWICIE" (kill switch, 2 klikniecia),
+	       dzialajace powiekszanie/pomniejszanie GUI (UIScale + uchwyt resize),
+	       nowy lekki interfejs (auto-layout, minimum instancji)
 ]]
 
 -- ===== SERVICES =====
@@ -65,7 +68,10 @@ local config = {
 	TimeToStartSec = 15,
 	AutoChestType = "None",
 	CombatTweenSpeed = 0.3,
-	SelectedMobs = {}
+	SelectedMobs = {},
+	GuiScale = 1,
+	GuiW = 360,
+	GuiH = 486
 }
 
 local savedPosition = nil
@@ -85,6 +91,9 @@ local function LoadConfig()
 		config.AutoChestType   = decoded.AutoChestType or "None"
 		config.CombatTweenSpeed = decoded.CombatTweenSpeed or config.CombatTweenSpeed
 		config.SelectedMobs    = decoded.SelectedMobs or config.SelectedMobs
+		config.GuiScale        = tonumber(decoded.GuiScale) or config.GuiScale
+		config.GuiW            = tonumber(decoded.GuiW) or config.GuiW
+		config.GuiH            = tonumber(decoded.GuiH) or config.GuiH
 		if type(decoded.SavedPosition) == "table" and #decoded.SavedPosition >= 12 then
 			pcall(function() savedPosition = CFrame_new(table.unpack(decoded.SavedPosition)) end)
 		end
@@ -105,6 +114,9 @@ local function SaveConfig()
 			AutoChestType = config.AutoChestType,
 			CombatTweenSpeed = config.CombatTweenSpeed,
 			SelectedMobs = config.SelectedMobs,
+			GuiScale = config.GuiScale,
+			GuiW = config.GuiW,
+			GuiH = config.GuiH,
 			SavedPosition = savedPosition and {savedPosition:GetComponents()} or nil
 		}))
 	end)
@@ -1366,589 +1378,815 @@ ToggleCombatFarming = function(state)
 	end
 end
 
--- ===== INTERFEJS GUI =====
+-- ===== V33: PELNE WYLACZENIE SKRYPTU (KILL SWITCH) =====
+-- Rejestr polaczen GUI + globalna funkcja ubijajaca caly skrypt.
+local guiConnections = {}
+local function trackConn(c)
+	if c then table.insert(guiConnections, c) end
+	return c
+end
+
+local isShuttingDown = false
+local ShutdownScript
+
+ShutdownScript = function(silent)
+	if isShuttingDown then return end
+	isShuttingDown = true
+
+	-- 1) Zatrzymaj wszystkie petle (kazda sprawdza te flage)
+	_G.TrialAutoFarmRunning = false
+
+	-- 2) Wylacz tryby farmienia
+	pcall(function() if config.IsFarming then ToggleFarming(false) end end)
+	pcall(function() if combatConfig.IsCombatFarming then ToggleCombatFarming(false) end end)
+	config.IsFarming = false
+	combatConfig.IsCombatFarming = false
+	config.AutoChestType = "None"
+
+	-- 3) Anuluj aktywne tweeny ruchu
+	pcall(function()
+		if combatConfig.CombatActiveTween then
+			combatConfig.CombatActiveTween:Cancel()
+			combatConfig.CombatActiveTween = nil
+		end
+	end)
+
+	-- 4) Rozlacz WSZYSTKIE polaczenia skryptu
+	pcall(function() antiAFK(false) end)
+	pcall(function() ToggleGhostMode(false) end)
+	pcall(function() if NoclipConnection then NoclipConnection:Disconnect(); NoclipConnection = nil end end)
+	pcall(function() if AxisLockConnection then AxisLockConnection:Disconnect(); AxisLockConnection = nil end end)
+	pcall(function() if consoleConnection then consoleConnection:Disconnect() end end)
+	for _, c in ipairs(guiConnections) do
+		pcall(function() c:Disconnect() end)
+	end
+	guiConnections = {}
+
+	-- 5) Przywroc postac do normalnego stanu
+	pcall(function()
+		local char = player.Character
+		if not char then return end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.Anchored = false
+			hrp.AssemblyLinearVelocity = Vector3_new(0, 0, 0)
+		end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.JumpPower = 50
+			hum.WalkSpeed = 16
+			hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+			hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+			hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, true)
+		end
+		for _, v in ipairs(char:GetDescendants()) do
+			if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
+				v.CanCollide = true
+			end
+		end
+	end)
+
+	-- 6) Posprzataj obiekty stworzone przez skrypt
+	pcall(function()
+		for _, v in ipairs(workspace:GetDescendants()) do
+			if v:IsA("BillboardGui") and v.Name == "MobNumberTag" then v:Destroy() end
+		end
+	end)
+	pcall(function()
+		local grid = workspace:FindFirstChild("AutoFarm_GridConfig")
+		if grid then grid:Destroy() end
+	end)
+	pcall(function()
+		local g = CoreGui:FindFirstChild("TrialAutofarmGUI")
+		if g then g:Destroy() end
+	end)
+
+	-- 7) Zapisz konfiguracje i zwolnij globale
+	pcall(SaveConfig)
+	if not silent then
+		pcall(function() SendWebhook("Skrypt zostal calkowicie wylaczony (kill switch)", false) end)
+	end
+	_G.TrialAutoFarmShutdown = nil
+end
+
+-- Mozna tez wywolac recznie z konsoli: _G.TrialAutoFarmShutdown()
+_G.TrialAutoFarmShutdown = ShutdownScript
+
+-- ===== INTERFEJS GUI (V33 - lekki, skalowalny) =====
 local function CreateGUI()
-    -- Paleta kolorow
-    local C = {
-        bg     = fromRGB(20, 20, 27),
-        panel  = fromRGB(29, 30, 40),
-        panel2 = fromRGB(37, 38, 51),
-        stroke = fromRGB(74, 76, 100),
-        text   = fromRGB(236, 237, 245),
-        sub    = fromRGB(150, 152, 172),
-        green  = fromRGB(46, 204, 113),
-        orange = fromRGB(230, 126, 34),
-        red    = fromRGB(231, 76, 60),
-        blue   = fromRGB(80, 120, 255),
-        purple = fromRGB(162, 102, 222),
-        teal   = fromRGB(0, 220, 190),
-    }
+	local UserInputService = game:GetService("UserInputService")
 
-    local function corner(inst, r)
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, r or 8)
-        c.Parent = inst
-        return c
-    end
+	-- Paleta
+	local C = {
+		bg      = fromRGB(17, 18, 24),
+		panel   = fromRGB(27, 29, 38),
+		panel2  = fromRGB(36, 38, 50),
+		stroke  = fromRGB(64, 68, 92),
+		text    = fromRGB(238, 239, 246),
+		sub     = fromRGB(149, 152, 173),
+		green   = fromRGB(46, 204, 113),
+		orange  = fromRGB(230, 126, 34),
+		red     = fromRGB(231, 76, 60),
+		blue    = fromRGB(84, 122, 255),
+		purple  = fromRGB(162, 102, 222),
+		teal    = fromRGB(0, 214, 186),
+	}
 
-    local function addStroke(inst, col, th, tr)
-        local st = Instance.new("UIStroke")
-        st.Color = col or C.stroke
-        st.Thickness = th or 1
-        st.Transparency = (tr == nil) and 0.4 or tr
-        st.Parent = inst
-        return st
-    end
+	local function corner(inst, r)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, r or 8)
+		c.Parent = inst
+		return c
+	end
 
-    local function shade(inst)
-        local g = Instance.new("UIGradient")
-        g.Rotation = 90
-        g.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-            ColorSequenceKeypoint.new(1, Color3.new(0.85, 0.85, 0.85)),
-        })
-        g.Parent = inst
-        return g
-    end
+	local function addStroke(inst, col, th, tr)
+		local st = Instance.new("UIStroke")
+		st.Color = col or C.stroke
+		st.Thickness = th or 1
+		st.Transparency = (tr == nil) and 0.45 or tr
+		st.Parent = inst
+		return st
+	end
 
-    -- Efekt hover niezalezny od koloru tla (glow + delikatne skalowanie)
-    local function interactive(btn, accent)
-        btn.AutoButtonColor = false
-        local scale = Instance.new("UIScale")
-        scale.Parent = btn
-        local st = addStroke(btn, accent or C.stroke, 1.4, 0.55)
-        btn.MouseEnter:Connect(function()
-            TweenService:Create(st, TweenInfo.new(0.15), {Transparency = 0.05}):Play()
-            TweenService:Create(scale, TweenInfo.new(0.15), {Scale = 1.03}):Play()
-        end)
-        btn.MouseLeave:Connect(function()
-            TweenService:Create(st, TweenInfo.new(0.15), {Transparency = 0.55}):Play()
-            TweenService:Create(scale, TweenInfo.new(0.15), {Scale = 1}):Play()
-        end)
-        btn.MouseButton1Down:Connect(function()
-            TweenService:Create(scale, TweenInfo.new(0.08), {Scale = 0.97}):Play()
-        end)
-        btn.MouseButton1Up:Connect(function()
-            TweenService:Create(scale, TweenInfo.new(0.08), {Scale = 1.03}):Play()
-        end)
-    end
+	-- Lekki hover: JEDEN tween koloru, zero dodatkowych instancji (UIScale/UIStroke per przycisk)
+	local function hoverable(btn)
+		btn.AutoButtonColor = false
+		local base
+		trackConn(btn.MouseEnter:Connect(function()
+			base = btn.BackgroundColor3
+			local l = Color3.new(
+				math.min(base.R + 0.09, 1),
+				math.min(base.G + 0.09, 1),
+				math.min(base.B + 0.09, 1)
+			)
+			TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = l}):Play()
+		end))
+		trackConn(btn.MouseLeave:Connect(function()
+			if base then
+				TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = base}):Play()
+			end
+		end))
+	end
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "TrialAutofarmGUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = CoreGui
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "TrialAutofarmGUI"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.Parent = CoreGui
 
-    -- Glowna ramka
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "Main"
-    mainFrame.Size = UDim2_new(0, 346, 0, 470)
-    mainFrame.Position = UDim2_new(0.5, -173, 0.5, -235)
-    mainFrame.BackgroundColor3 = C.bg
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Active = true
-    mainFrame.Draggable = true
-    corner(mainFrame, 16)
-    addStroke(mainFrame, C.stroke, 1.2, 0.25)
-    mainFrame.Parent = screenGui
+	-- ===== GLOWNA RAMKA =====
+	local startW = math.clamp(tonumber(config.GuiW) or 360, 300, 700)
+	local startH = math.clamp(tonumber(config.GuiH) or 486, 200, 820)
 
-    -- Pasek tytulu (gradient)
-    local title = Instance.new("Frame")
-    title.Size = UDim2_new(1, 0, 0, 48)
-    title.BackgroundColor3 = C.blue
-    title.BorderSizePixel = 0
-    corner(title, 16)
-    title.Parent = mainFrame
+	local mainFrame = Instance.new("Frame")
+	mainFrame.Name = "Main"
+	mainFrame.Size = UDim2_new(0, startW, 0, startH)
+	mainFrame.Position = UDim2_new(0.5, -startW / 2, 0.5, -startH / 2)
+	mainFrame.BackgroundColor3 = C.bg
+	mainFrame.BorderSizePixel = 0
+	mainFrame.Active = true
+	mainFrame.Draggable = false -- wlasny drag (Draggable kolidowal z uchwytem resize)
+	corner(mainFrame, 14)
+	addStroke(mainFrame, C.stroke, 1.2, 0.3)
+	mainFrame.Parent = screenGui
 
-    local titleGrad = Instance.new("UIGradient")
-    titleGrad.Rotation = 20
-    titleGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.blue),
-        ColorSequenceKeypoint.new(1, C.purple),
-    })
-    titleGrad.Parent = title
+	-- Skalowanie calego GUI (zwiekszanie / pomniejszanie)
+	local uiScale = Instance.new("UIScale")
+	uiScale.Scale = math.clamp(tonumber(config.GuiScale) or 1, 0.6, 2)
+	uiScale.Parent = mainFrame
 
-    local titleText = Instance.new("TextLabel")
-    titleText.Size = UDim2_new(1, -24, 1, 0)
-    titleText.Position = UDim2_new(0, 16, 0, 0)
-    titleText.BackgroundTransparency = 1
-    titleText.RichText = true
-    titleText.Text = "\240\159\142\175  Dokladna Sciezka  \226\128\162  V32   <font size=\"11\" color=\"rgb(150,152,172)\"><s>L = ukryj GUI</s></font>"
-    titleText.TextColor3 = fromRGB(255, 255, 255)
-    titleText.TextXAlignment = Enum.TextXAlignment.Left
-    titleText.Font = Enum.Font.GothamBold
-    titleText.TextSize = 17
-    titleText.Parent = title
+	-- ===== PASEK TYTULU =====
+	local title = Instance.new("Frame")
+	title.Name = "Title"
+	title.Size = UDim2_new(1, 0, 0, 44)
+	title.BackgroundColor3 = C.blue
+	title.BorderSizePixel = 0
+	title.Active = true
+	corner(title, 14)
+	title.Parent = mainFrame
 
-    local minBtn = Instance.new("TextButton")
-    minBtn.Size = UDim2_new(0, 28, 0, 28)
-    minBtn.Position = UDim2_new(1, -38, 0, 10)
-    minBtn.BackgroundColor3 = C.panel2
-    minBtn.Text = "\226\128\148"
-    minBtn.TextColor3 = fromRGB(255, 255, 255)
-    minBtn.Font = Enum.Font.GothamBold
-    minBtn.TextSize = 18
-    minBtn.BorderSizePixel = 0
-    corner(minBtn, 8)
-    minBtn.Parent = title
+	local titleGrad = Instance.new("UIGradient")
+	titleGrad.Rotation = 15
+	titleGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, C.blue),
+		ColorSequenceKeypoint.new(1, C.purple),
+	})
+	titleGrad.Parent = title
 
-    -- Zakladki
-    local tabRow = Instance.new("Frame")
-    tabRow.Size = UDim2_new(1, -24, 0, 34)
-    tabRow.Position = UDim2_new(0, 12, 0, 56)
-    tabRow.BackgroundTransparency = 1
-    tabRow.Parent = mainFrame
+	-- maskowanie dolnych zaokraglen paska tytulu
+	local titleFix = Instance.new("Frame")
+	titleFix.Size = UDim2_new(1, 0, 0, 14)
+	titleFix.Position = UDim2_new(0, 0, 1, -14)
+	titleFix.BackgroundColor3 = C.purple
+	titleFix.BackgroundTransparency = 0.15
+	titleFix.BorderSizePixel = 0
+	titleFix.ZIndex = 0
+	titleFix.Parent = title
 
-    local function makeTab(txt, xScale, xOff)
-        local b = Instance.new("TextButton")
-        b.Size = UDim2_new(0.5, -4, 1, 0)
-        b.Position = UDim2_new(xScale, xOff, 0, 0)
-        b.Text = txt
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 14
-        b.TextColor3 = C.text
-        b.BackgroundColor3 = C.panel2
-        b.BorderSizePixel = 0
-        b.AutoButtonColor = false
-        corner(b, 8)
-        b.Parent = tabRow
-        return b
-    end
+	local titleText = Instance.new("TextLabel")
+	titleText.Size = UDim2_new(1, -150, 1, 0)
+	titleText.Position = UDim2_new(0, 14, 0, 0)
+	titleText.BackgroundTransparency = 1
+	titleText.RichText = true
+	titleText.Text = "TRIAL AUTO-FARM  <font size=\"12\" color=\"rgb(226,228,255)\">V33</font>"
+	titleText.TextColor3 = fromRGB(255, 255, 255)
+	titleText.TextXAlignment = Enum.TextXAlignment.Left
+	titleText.Font = Enum.Font.GothamBold
+	titleText.TextSize = 16
+	titleText.Parent = title
 
-    local mainTabBtn = makeTab("Sciezka Farmu", 0, 0)
-    local settingsTabBtn = makeTab("Ustawienia", 0.5, 4)
+	-- Male przyciski w pasku tytulu
+	local function titleButton(txt, xOff, w)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2_new(0, w or 26, 0, 26)
+		b.Position = UDim2_new(1, xOff, 0, 9)
+		b.BackgroundColor3 = C.panel2
+		b.BackgroundTransparency = 0.15
+		b.Text = txt
+		b.TextColor3 = fromRGB(255, 255, 255)
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 15
+		b.BorderSizePixel = 0
+		corner(b, 7)
+		b.Parent = title
+		hoverable(b)
+		return b
+	end
 
-    local mainTabFrame = Instance.new("ScrollingFrame")
-    mainTabFrame.Size = UDim2_new(1, -24, 1, -102)
-    mainTabFrame.Position = UDim2_new(0, 12, 0, 98)
-    mainTabFrame.BackgroundTransparency = 1
-    mainTabFrame.BorderSizePixel = 0
-    mainTabFrame.ScrollBarThickness = 4
-    mainTabFrame.ScrollBarImageColor3 = C.stroke
-    mainTabFrame.CanvasSize = UDim2_new(0, 0, 0, 420)
-    mainTabFrame.Parent = mainFrame
+	local minusBtn   = titleButton("-", -136)
+	local scaleLabel = Instance.new("TextLabel")
+	scaleLabel.Size = UDim2_new(0, 44, 0, 26)
+	scaleLabel.Position = UDim2_new(1, -108, 0, 9)
+	scaleLabel.BackgroundTransparency = 1
+	scaleLabel.Text = "100%"
+	scaleLabel.TextColor3 = fromRGB(235, 236, 255)
+	scaleLabel.Font = Enum.Font.GothamSemibold
+	scaleLabel.TextSize = 12
+	scaleLabel.Parent = title
+	local plusBtn = titleButton("+", -62)
+	local minBtn  = titleButton("\226\128\148", -32)
 
-    local settingsTabFrame = Instance.new("ScrollingFrame")
-    settingsTabFrame.Size = UDim2_new(1, -24, 1, -102)
-    settingsTabFrame.Position = UDim2_new(0, 12, 0, 98)
-    settingsTabFrame.BackgroundTransparency = 1
-    settingsTabFrame.BorderSizePixel = 0
-    settingsTabFrame.ScrollBarThickness = 4
-    settingsTabFrame.ScrollBarImageColor3 = C.stroke
-    settingsTabFrame.CanvasSize = UDim2_new(0, 0, 0, 628)
-    settingsTabFrame.Visible = false
-    settingsTabFrame.Parent = mainFrame
+	local function setScale(v, save)
+		v = math.clamp(v, 0.6, 2)
+		uiScale.Scale = v
+		config.GuiScale = v
+		scaleLabel.Text = tostring(math.floor(v * 100 + 0.5)) .. "%"
+		if save ~= false then SaveConfig() end
+	end
+	setScale(uiScale.Scale, false)
 
-    local currentTabIsMain = true
-    local isMinimized = false
-    local expandedSize = mainFrame.Size
+	trackConn(minusBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale - 0.1) end))
+	trackConn(plusBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale + 0.1) end))
 
-    local function setTab(main)
-        currentTabIsMain = main
-        mainTabFrame.Visible = main
-        settingsTabFrame.Visible = not main
-        mainTabBtn.BackgroundColor3 = main and C.blue or C.panel2
-        settingsTabBtn.BackgroundColor3 = main and C.panel2 or C.blue
-        mainTabBtn.TextColor3 = main and fromRGB(255, 255, 255) or C.sub
-        settingsTabBtn.TextColor3 = main and C.sub or fromRGB(255, 255, 255)
-    end
-    mainTabBtn.MouseButton1Click:Connect(function() setTab(true) end)
-    settingsTabBtn.MouseButton1Click:Connect(function() setTab(false) end)
+	-- ===== ZAKLADKI =====
+	local tabRow = Instance.new("Frame")
+	tabRow.Size = UDim2_new(1, -24, 0, 32)
+	tabRow.Position = UDim2_new(0, 12, 0, 52)
+	tabRow.BackgroundTransparency = 1
+	tabRow.Parent = mainFrame
 
-    local function setMinimized(min)
-        isMinimized = min
-        tabRow.Visible = not min
-        if min then
-            mainTabFrame.Visible = false
-            settingsTabFrame.Visible = false
-            mainFrame.Size = UDim2_new(0, expandedSize.X.Offset, 0, 48)
-            minBtn.Text = "+"
-        else
-            mainFrame.Size = expandedSize
-            setTab(currentTabIsMain)
-            minBtn.Text = "\226\128\148"
-        end
-    end
-    minBtn.MouseButton1Click:Connect(function() setMinimized(not isMinimized) end)
+	local function makeTab(txt, xScale, xOff)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2_new(0.5, -4, 1, 0)
+		b.Position = UDim2_new(xScale, xOff, 0, 0)
+		b.Text = txt
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 13
+		b.TextColor3 = C.text
+		b.BackgroundColor3 = C.panel2
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = false
+		corner(b, 8)
+		b.Parent = tabRow
+		return b
+	end
 
-    local UserInputService = game:GetService("UserInputService")
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.KeyCode == Enum.KeyCode.L then
-            mainFrame.Visible = not mainFrame.Visible
-        end
-    end)
+	local mainTabBtn = makeTab("Sciezka Farmu", 0, 0)
+	local settingsTabBtn = makeTab("Ustawienia", 0.5, 4)
 
-    -- Fabryka przyciskow akcji
-    local function actionButton(parent, y, h, txt, color, textSize)
-        local b = Instance.new("TextButton")
-        b.Size = UDim2_new(1, 0, 0, h)
-        b.Position = UDim2_new(0, 0, 0, y)
-        b.Text = txt
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = textSize or 15
-        b.TextColor3 = fromRGB(255, 255, 255)
-        b.BackgroundColor3 = color
-        b.BorderSizePixel = 0
-        corner(b, 10)
-        shade(b)
-        b.Parent = parent
-        interactive(b, color)
-        return b
-    end
+	-- ===== KONTENERY ZAKLADEK (auto-layout => dziala przy kazdym rozmiarze) =====
+	local function makeScroll()
+		local f = Instance.new("ScrollingFrame")
+		f.Size = UDim2_new(1, -24, 1, -122)
+		f.Position = UDim2_new(0, 12, 0, 92)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.ScrollBarThickness = 4
+		f.ScrollBarImageColor3 = C.stroke
+		f.ScrollingDirection = Enum.ScrollingDirection.Y
+		f.CanvasSize = UDim2_new(0, 0, 0, 0)
+		f.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		f.Parent = mainFrame
 
-    -- ===== ZAKLADKA: SCIEZKA FARMU =====
-    local statusCard = Instance.new("Frame")
-    statusCard.Size = UDim2_new(1, 0, 0, 50)
-    statusCard.Position = UDim2_new(0, 0, 0, 0)
-    statusCard.BackgroundColor3 = C.panel
-    statusCard.BorderSizePixel = 0
-    corner(statusCard, 10)
-    addStroke(statusCard, C.teal, 1, 0.55)
-    statusCard.Parent = mainTabFrame
+		local l = Instance.new("UIListLayout")
+		l.SortOrder = Enum.SortOrder.LayoutOrder
+		l.Padding = UDim.new(0, 8)
+		l.Parent = f
 
-    singleTimerLabelRef = Instance.new("TextLabel")
-    singleTimerLabelRef.Size = UDim2_new(1, -20, 1, 0)
-    singleTimerLabelRef.Position = UDim2_new(0, 10, 0, 0)
-    singleTimerLabelRef.BackgroundTransparency = 1
-    singleTimerLabelRef.Text = "Inicjalizacja systemu timerow..."
-    singleTimerLabelRef.TextColor3 = C.teal
-    singleTimerLabelRef.Font = Enum.Font.GothamBold
-    singleTimerLabelRef.TextSize = 13
-    singleTimerLabelRef.TextWrapped = true
-    singleTimerLabelRef.Parent = statusCard
+		local p = Instance.new("UIPadding")
+		p.PaddingBottom = UDim.new(0, 10)
+		p.PaddingRight = UDim.new(0, 4)
+		p.Parent = f
+		return f
+	end
 
-    local trialBtn   = actionButton(mainTabFrame, 60,  40, "Trial: " .. config.SelectedTrial, C.blue, 15)
-    local savePosBtn = actionButton(mainTabFrame, 108, 36, "\240\159\147\140 Zapisz Pozycje Bazy", C.purple, 14)
-    farmBtnRef       = actionButton(mainTabFrame, 152, 50, "\226\150\182 Start AutoFarm", C.green, 18)
-    local chestBtn   = actionButton(mainTabFrame, 210, 36, "\226\157\140 Auto Chest (OFF)", C.red, 14)
-    local killBtn    = actionButton(mainTabFrame, 252, 36, "\240\159\155\145 Wylacz skrypt calkowicie", C.red, 14)
+	local mainTabFrame = makeScroll()
+	local settingsTabFrame = makeScroll()
+	settingsTabFrame.Visible = false
 
-    local divider = Instance.new("Frame")
-    divider.Size = UDim2_new(1, 0, 0, 1)
-    divider.Position = UDim2_new(0, 0, 0, 300)
-    divider.BackgroundColor3 = C.stroke
-    divider.BackgroundTransparency = 0.3
-    divider.BorderSizePixel = 0
-    divider.Parent = mainTabFrame
+	local ord = 0
+	local function nextOrd()
+		ord = ord + 1
+		return ord
+	end
 
-    local combatLabel = Instance.new("TextLabel")
-    combatLabel.Size = UDim2_new(1, 0, 0, 20)
-    combatLabel.Position = UDim2_new(0, 2, 0, 310)
-    combatLabel.BackgroundTransparency = 1
-    combatLabel.Text = "\226\154\148 Combat Farm"
-    combatLabel.TextColor3 = fromRGB(255, 120, 120)
-    combatLabel.TextXAlignment = Enum.TextXAlignment.Left
-    combatLabel.Font = Enum.Font.GothamBold
-    combatLabel.TextSize = 14
-    combatLabel.Parent = mainTabFrame
+	-- ===== STOPKA (stale widoczny kill switch) =====
+	local footer = Instance.new("Frame")
+	footer.Size = UDim2_new(1, -24, 0, 34)
+	footer.Position = UDim2_new(0, 12, 1, -44)
+	footer.BackgroundTransparency = 1
+	footer.Parent = mainFrame
 
-    combatBtnRef = actionButton(mainTabFrame, 334, 42, "\226\150\182 Start Combat Farm", C.green, 16)
+	local killBtn = Instance.new("TextButton")
+	killBtn.Name = "KillSwitch"
+	killBtn.Size = UDim2_new(1, -26, 1, 0)
+	killBtn.BackgroundColor3 = C.red
+	killBtn.Text = "\240\159\155\145  WYLACZ SKRYPT CALKOWICIE"
+	killBtn.TextColor3 = fromRGB(255, 255, 255)
+	killBtn.Font = Enum.Font.GothamBold
+	killBtn.TextSize = 13
+	killBtn.BorderSizePixel = 0
+	killBtn.AutoButtonColor = false
+	corner(killBtn, 9)
+	killBtn.Parent = footer
+	hoverable(killBtn)
 
-    local statusPill = Instance.new("Frame")
-    statusPill.Size = UDim2_new(1, 0, 0, 26)
-    statusPill.Position = UDim2_new(0, 0, 0, 382)
-    statusPill.BackgroundColor3 = C.panel
-    statusPill.BorderSizePixel = 0
-    corner(statusPill, 8)
-    statusPill.Parent = mainTabFrame
+	-- ===== FABRYKI ELEMENTOW =====
+	local function actionButton(parent, h, txt, color, textSize)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2_new(1, 0, 0, h)
+		b.LayoutOrder = nextOrd()
+		b.Text = txt
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = textSize or 14
+		b.TextColor3 = fromRGB(255, 255, 255)
+		b.BackgroundColor3 = color
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = false
+		corner(b, 9)
+		b.Parent = parent
+		hoverable(b)
+		return b
+	end
 
-    combatStatusLabelRef = Instance.new("TextLabel")
-    combatStatusLabelRef.Size = UDim2_new(1, -16, 1, 0)
-    combatStatusLabelRef.Position = UDim2_new(0, 8, 0, 0)
-    combatStatusLabelRef.BackgroundTransparency = 1
-    combatStatusLabelRef.Text = "Status: Nieaktywny"
-    combatStatusLabelRef.TextColor3 = C.sub
-    combatStatusLabelRef.TextXAlignment = Enum.TextXAlignment.Left
-    combatStatusLabelRef.Font = Enum.Font.GothamSemibold
-    combatStatusLabelRef.TextSize = 12
-    combatStatusLabelRef.Parent = statusPill
+	local function sectionLabel(parent, txt, col)
+		local l = Instance.new("TextLabel")
+		l.Size = UDim2_new(1, 0, 0, 18)
+		l.LayoutOrder = nextOrd()
+		l.BackgroundTransparency = 1
+		l.Text = txt
+		l.TextColor3 = col or C.sub
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Font = Enum.Font.GothamBold
+		l.TextSize = 12
+		l.Parent = parent
+		return l
+	end
 
-    local function UpdateChestButton()
-        if config.AutoChestType == "None" then
-            chestBtn.Text = "\226\157\140 Auto Chest (OFF)"
-            chestBtn.BackgroundColor3 = C.red
-        elseif config.AutoChestType == "T1" then
-            chestBtn.Text = "\240\159\147\166 Auto Chest (T1)"
-            chestBtn.BackgroundColor3 = C.green
-        else
-            chestBtn.Text = "\240\159\142\129 Auto Chest (T2)"
-            chestBtn.BackgroundColor3 = C.purple
-        end
-    end
-    UpdateChestButton()
+	-- ===== ZAKLADKA: SCIEZKA FARMU =====
+	local statusCard = Instance.new("Frame")
+	statusCard.Size = UDim2_new(1, 0, 0, 48)
+	statusCard.LayoutOrder = nextOrd()
+	statusCard.BackgroundColor3 = C.panel
+	statusCard.BorderSizePixel = 0
+	corner(statusCard, 10)
+	addStroke(statusCard, C.teal, 1, 0.6)
+	statusCard.Parent = mainTabFrame
 
-    -- ===== ZAKLADKA: USTAWIENIA =====
-    local function CreateInput(y, labelStr, default)
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2_new(1, 0, 0, 16)
-        label.Position = UDim2_new(0, 2, 0, y)
-        label.BackgroundTransparency = 1
-        label.Text = labelStr
-        label.TextColor3 = C.sub
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Font = Enum.Font.GothamSemibold
-        label.TextSize = 12
-        label.Parent = settingsTabFrame
+	singleTimerLabelRef = Instance.new("TextLabel")
+	singleTimerLabelRef.Size = UDim2_new(1, -20, 1, 0)
+	singleTimerLabelRef.Position = UDim2_new(0, 10, 0, 0)
+	singleTimerLabelRef.BackgroundTransparency = 1
+	singleTimerLabelRef.Text = "Inicjalizacja systemu timerow..."
+	singleTimerLabelRef.TextColor3 = C.teal
+	singleTimerLabelRef.TextXAlignment = Enum.TextXAlignment.Left
+	singleTimerLabelRef.Font = Enum.Font.GothamBold
+	singleTimerLabelRef.TextSize = 12
+	singleTimerLabelRef.TextWrapped = true
+	singleTimerLabelRef.Parent = statusCard
 
-        local box = Instance.new("TextBox")
-        box.Size = UDim2_new(1, 0, 0, 30)
-        box.Position = UDim2_new(0, 0, 0, y + 18)
-        box.BackgroundColor3 = C.panel2
-        box.TextColor3 = C.text
-        box.Text = default
-        box.Font = Enum.Font.Gotham
-        box.TextSize = 13
-        box.ClearTextOnFocus = false
-        box.BorderSizePixel = 0
-        corner(box, 8)
-        addStroke(box, C.stroke, 1, 0.5)
-        box.Parent = settingsTabFrame
-        return box
-    end
+	sectionLabel(mainTabFrame, "TRIAL")
+	local trialBtn   = actionButton(mainTabFrame, 36, "Trial: " .. config.SelectedTrial, C.blue, 14)
+	local savePosBtn = actionButton(mainTabFrame, 34, "\240\159\147\140 Zapisz Pozycje Bazy", C.purple, 13)
+	farmBtnRef       = actionButton(mainTabFrame, 46, "\226\150\182 Start AutoFarm", C.green, 17)
+	local chestBtn   = actionButton(mainTabFrame, 34, "\226\157\140 Auto Chest (OFF)", C.red, 13)
 
-    local speedBox       = CreateInput(6,   "Predkosc lotu (Trial):", tostring(config.Speed))
-    local cooldownBox    = CreateInput(56,  "Cooldown po zabiciu:", tostring(config.Cooldown))
-    local waveWaitBox    = CreateInput(106, "Czas na nowa fale:", tostring(config.WaveWaitTime))
-    local ghostYBox      = CreateInput(156, "Wysokosc Ghost Mode (Y):", tostring(config.GhostModeY))
-    local startSecBox    = CreateInput(206, "Teleport gdy <= X sek (otwarty portal):", tostring(config.TimeToStartSec))
-    local combatYBox     = CreateInput(254, "Wysokosc Combat Ghost (Y):", tostring(config.CombatGhostY))
-    local combatInfoLabel = Instance.new("TextLabel")
-    combatInfoLabel.Size = UDim2_new(1, 0, 0, 40)
-    combatInfoLabel.Position = UDim2_new(0, 2, 0, 306)
-    combatInfoLabel.BackgroundTransparency = 1
-    combatInfoLabel.Text = "\226\154\148 Combat Farm uzywa predkosci/cooldownu Triala, ale ma WLASNA wysokosc (Combat Ghost Y powyzej)."
-    combatInfoLabel.TextColor3 = C.sub
-    combatInfoLabel.TextWrapped = true
-    combatInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    combatInfoLabel.TextYAlignment = Enum.TextYAlignment.Top
-    combatInfoLabel.Font = Enum.Font.Gotham
-    combatInfoLabel.TextSize = 11
-    combatInfoLabel.Parent = settingsTabFrame
+	sectionLabel(mainTabFrame, "COMBAT FARM", fromRGB(255, 130, 130))
+	combatBtnRef = actionButton(mainTabFrame, 40, "\226\150\182 Start Combat Farm", C.green, 15)
 
-    savedCoordsLabelRef = Instance.new("TextLabel")
-    savedCoordsLabelRef.Size = UDim2_new(1, 0, 0, 20)
-    savedCoordsLabelRef.Position = UDim2_new(0, 2, 0, 350)
-    savedCoordsLabelRef.BackgroundTransparency = 1
-    savedCoordsLabelRef.Text = savedPosition and string.format("Zapisane Kordynaty: %.1f, %.1f, %.1f", savedPosition.X, savedPosition.Y, savedPosition.Z) or "Zapisane Kordynaty: Brak"
-    savedCoordsLabelRef.TextColor3 = C.purple
-    savedCoordsLabelRef.TextXAlignment = Enum.TextXAlignment.Left
-    savedCoordsLabelRef.Font = Enum.Font.GothamSemibold
-    savedCoordsLabelRef.TextSize = 13
-    savedCoordsLabelRef.Parent = settingsTabFrame
+	local statusPill = Instance.new("Frame")
+	statusPill.Size = UDim2_new(1, 0, 0, 26)
+	statusPill.LayoutOrder = nextOrd()
+	statusPill.BackgroundColor3 = C.panel
+	statusPill.BorderSizePixel = 0
+	corner(statusPill, 8)
+	statusPill.Parent = mainTabFrame
 
-    -- V27: guzik do wyczyszczenia zapisanej pozycji
-    local clearSavedPosBtn = Instance.new("TextButton")
-    clearSavedPosBtn.Size = UDim2_new(1, -4, 0, 26)
-    clearSavedPosBtn.Position = UDim2_new(0, 2, 0, 372)
-    clearSavedPosBtn.Text = "\240\159\151\145 Usun zapisane kordynaty"
-    clearSavedPosBtn.Font = Enum.Font.GothamBold
-    clearSavedPosBtn.TextSize = 12
-    clearSavedPosBtn.TextColor3 = fromRGB(255, 255, 255)
-    clearSavedPosBtn.BackgroundColor3 = C.red
-    clearSavedPosBtn.BorderSizePixel = 0
-    clearSavedPosBtn.AutoButtonColor = false
-    corner(clearSavedPosBtn, 6)
-    clearSavedPosBtn.Parent = settingsTabFrame
+	combatStatusLabelRef = Instance.new("TextLabel")
+	combatStatusLabelRef.Size = UDim2_new(1, -16, 1, 0)
+	combatStatusLabelRef.Position = UDim2_new(0, 8, 0, 0)
+	combatStatusLabelRef.BackgroundTransparency = 1
+	combatStatusLabelRef.Text = "Status: Nieaktywny"
+	combatStatusLabelRef.TextColor3 = C.sub
+	combatStatusLabelRef.TextXAlignment = Enum.TextXAlignment.Left
+	combatStatusLabelRef.Font = Enum.Font.GothamSemibold
+	combatStatusLabelRef.TextSize = 12
+	combatStatusLabelRef.Parent = statusPill
 
-    clearSavedPosBtn.MouseButton1Click:Connect(function()
-        savedPosition = nil
-        SaveConfig()
-        if savedCoordsLabelRef then
-            savedCoordsLabelRef.Text = "Zapisane Kordynaty: Brak"
-        end
-        clearSavedPosBtn.Text = "\226\156\133 Usunieto!"
-        clearSavedPosBtn.BackgroundColor3 = C.green
-        task.delay(1.5, function()
-            clearSavedPosBtn.Text = "\240\159\151\145 Usun zapisane kordynaty"
-            clearSavedPosBtn.BackgroundColor3 = C.red
-        end)
-    end)
+	local function UpdateChestButton()
+		if config.AutoChestType == "None" then
+			chestBtn.Text = "\226\157\140 Auto Chest (OFF)"
+			chestBtn.BackgroundColor3 = C.red
+		elseif config.AutoChestType == "T1" then
+			chestBtn.Text = "\240\159\147\166 Auto Chest (T1)"
+			chestBtn.BackgroundColor3 = C.green
+		else
+			chestBtn.Text = "\240\159\142\129 Auto Chest (T2)"
+			chestBtn.BackgroundColor3 = C.purple
+		end
+	end
+	UpdateChestButton()
 
-    local mobSelectLabel = Instance.new("TextLabel")
-    mobSelectLabel.Size = UDim2_new(1, 0, 0, 18)
-    mobSelectLabel.Position = UDim2_new(0, 2, 0, 410)
-    mobSelectLabel.BackgroundTransparency = 1
-    mobSelectLabel.Text = "Wybierz moby do farmienia:"
-    mobSelectLabel.TextColor3 = C.sub
-    mobSelectLabel.TextXAlignment = Enum.TextXAlignment.Left
-    mobSelectLabel.Font = Enum.Font.GothamSemibold
-    mobSelectLabel.TextSize = 12
-    mobSelectLabel.Parent = settingsTabFrame
+	-- ===== ZAKLADKA: USTAWIENIA =====
+	local function CreateInput(labelStr, default)
+		local holder = Instance.new("Frame")
+		holder.Size = UDim2_new(1, 0, 0, 48)
+		holder.LayoutOrder = nextOrd()
+		holder.BackgroundTransparency = 1
+		holder.Parent = settingsTabFrame
 
-    local mobContainer = Instance.new("ScrollingFrame")
-    mobContainer.Name = "MobContainer"
-    mobContainer.Size = UDim2_new(1, 0, 0, 140)
-    mobContainer.Position = UDim2_new(0, 0, 0, 432)
-    mobContainer.BackgroundColor3 = C.panel
-    mobContainer.BorderSizePixel = 0
-    mobContainer.ScrollBarThickness = 4
-    mobContainer.ScrollBarImageColor3 = C.stroke
-    mobContainer.CanvasSize = UDim2_new(0, 0, 0, 0)
-    corner(mobContainer, 8)
-    mobContainer.Parent = settingsTabFrame
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2_new(1, 0, 0, 15)
+		label.BackgroundTransparency = 1
+		label.Text = labelStr
+		label.TextColor3 = C.sub
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Font = Enum.Font.GothamSemibold
+		label.TextSize = 11
+		label.Parent = holder
 
-    local mobPad = Instance.new("UIPadding")
-    mobPad.PaddingTop = UDim.new(0, 6)
-    mobPad.PaddingLeft = UDim.new(0, 6)
-    mobPad.PaddingRight = UDim.new(0, 6)
-    mobPad.Parent = mobContainer
+		local box = Instance.new("TextBox")
+		box.Size = UDim2_new(1, 0, 0, 29)
+		box.Position = UDim2_new(0, 0, 0, 17)
+		box.BackgroundColor3 = C.panel2
+		box.TextColor3 = C.text
+		box.Text = default
+		box.Font = Enum.Font.Gotham
+		box.TextSize = 13
+		box.ClearTextOnFocus = false
+		box.BorderSizePixel = 0
+		corner(box, 8)
+		box.Parent = holder
+		return box
+	end
 
-    local mobListLayout = Instance.new("UIGridLayout")
-    mobListLayout.CellSize = UDim2_new(0.315, -6, 0, 28)
-    mobListLayout.CellPadding = UDim2_new(0, 6, 0, 6)
-    mobListLayout.Parent = mobContainer
+	sectionLabel(settingsTabFrame, "PARAMETRY FARMU")
+	local speedBox    = CreateInput("Predkosc lotu (Trial):", tostring(config.Speed))
+	local cooldownBox = CreateInput("Cooldown po zabiciu:", tostring(config.Cooldown))
+	local waveWaitBox = CreateInput("Czas na nowa fale:", tostring(config.WaveWaitTime))
+	local ghostYBox   = CreateInput("Wysokosc Ghost Mode (Y):", tostring(config.GhostModeY))
+	local startSecBox = CreateInput("Teleport gdy <= X sek (otwarty portal):", tostring(config.TimeToStartSec))
+	local combatYBox  = CreateInput("Wysokosc Combat Ghost (Y):", tostring(config.CombatGhostY))
 
-    for _, mobName in ipairs(MOBS) do
-        local btn = Instance.new("TextButton")
-        btn.Name = "Mob_" .. mobName
-        btn.Text = mobName
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 10
-        btn.TextColor3 = fromRGB(255, 255, 255)
-        btn.BorderSizePixel = 0
-        btn.AutoButtonColor = false
-        local isActive = config.SelectedMobs[mobName] == true
-        btn.BackgroundColor3 = isActive and C.green or fromRGB(150, 55, 55)
-        corner(btn, 6)
-        btn.Parent = mobContainer
-        btn.MouseButton1Click:Connect(function()
-            config.SelectedMobs[mobName] = not (config.SelectedMobs[mobName] or false)
-            btn.BackgroundColor3 = config.SelectedMobs[mobName] and C.green or fromRGB(150, 55, 55)
-            SaveConfig()
-        end)
-    end
+	local combatInfoLabel = Instance.new("TextLabel")
+	combatInfoLabel.Size = UDim2_new(1, 0, 0, 34)
+	combatInfoLabel.LayoutOrder = nextOrd()
+	combatInfoLabel.BackgroundTransparency = 1
+	combatInfoLabel.Text = "Combat Farm uzywa predkosci/cooldownu Triala, ale ma WLASNA wysokosc (Combat Ghost Y)."
+	combatInfoLabel.TextColor3 = C.sub
+	combatInfoLabel.TextWrapped = true
+	combatInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+	combatInfoLabel.TextYAlignment = Enum.TextYAlignment.Top
+	combatInfoLabel.Font = Enum.Font.Gotham
+	combatInfoLabel.TextSize = 11
+	combatInfoLabel.Parent = settingsTabFrame
 
-    mobListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        mobContainer.CanvasSize = UDim2_new(0, 0, 0, mobListLayout.AbsoluteContentSize.Y + 12)
-    end)
+	sectionLabel(settingsTabFrame, "POZYCJA BAZY")
+	savedCoordsLabelRef = Instance.new("TextLabel")
+	savedCoordsLabelRef.Size = UDim2_new(1, 0, 0, 20)
+	savedCoordsLabelRef.LayoutOrder = nextOrd()
+	savedCoordsLabelRef.BackgroundTransparency = 1
+	savedCoordsLabelRef.Text = savedPosition
+		and string.format("Zapisane Kordynaty: %.1f, %.1f, %.1f", savedPosition.X, savedPosition.Y, savedPosition.Z)
+		or "Zapisane Kordynaty: Brak"
+	savedCoordsLabelRef.TextColor3 = C.purple
+	savedCoordsLabelRef.TextXAlignment = Enum.TextXAlignment.Left
+	savedCoordsLabelRef.Font = Enum.Font.GothamSemibold
+	savedCoordsLabelRef.TextSize = 12
+	savedCoordsLabelRef.Parent = settingsTabFrame
 
-    -- ===== POLACZENIA =====
-    speedBox.FocusLost:Connect(function() config.Speed = tonumber(speedBox.Text) or config.Speed; speedBox.Text = tostring(config.Speed); SaveConfig() end)
-    cooldownBox.FocusLost:Connect(function() config.Cooldown = tonumber(cooldownBox.Text) or config.Cooldown; cooldownBox.Text = tostring(config.Cooldown); SaveConfig() end)
-    waveWaitBox.FocusLost:Connect(function() config.WaveWaitTime = tonumber(waveWaitBox.Text) or config.WaveWaitTime; waveWaitBox.Text = tostring(config.WaveWaitTime); SaveConfig() end)
-    ghostYBox.FocusLost:Connect(function() config.GhostModeY = tonumber(ghostYBox.Text) or config.GhostModeY; ghostYBox.Text = tostring(config.GhostModeY); SaveConfig() end)
-    combatYBox.FocusLost:Connect(function() config.CombatGhostY = tonumber(combatYBox.Text) or config.CombatGhostY; combatYBox.Text = tostring(config.CombatGhostY); SaveConfig() end)
-    startSecBox.FocusLost:Connect(function() config.TimeToStartSec = tonumber(startSecBox.Text) or config.TimeToStartSec; startSecBox.Text = tostring(config.TimeToStartSec); SaveConfig() end)
+	local clearSavedPosBtn = actionButton(settingsTabFrame, 28, "\240\159\151\145 Usun zapisane kordynaty", C.red, 12)
 
-    trialBtn.MouseButton1Click:Connect(function()
-        if config.IsFarming then return end
-        if config.SelectedTrial == "Easy" then config.SelectedTrial = "Medium"
-        elseif config.SelectedTrial == "Medium" then config.SelectedTrial = "Hard"
-        else config.SelectedTrial = "Easy" end
-        trialBtn.Text = "Trial: " .. config.SelectedTrial
-        SaveConfig()
-    end)
+	sectionLabel(settingsTabFrame, "MOBY DO FARMIENIA")
+	local mobContainer = Instance.new("ScrollingFrame")
+	mobContainer.Name = "MobContainer"
+	mobContainer.Size = UDim2_new(1, 0, 0, 140)
+	mobContainer.LayoutOrder = nextOrd()
+	mobContainer.BackgroundColor3 = C.panel
+	mobContainer.BorderSizePixel = 0
+	mobContainer.ScrollBarThickness = 4
+	mobContainer.ScrollBarImageColor3 = C.stroke
+	mobContainer.CanvasSize = UDim2_new(0, 0, 0, 0)
+	mobContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	corner(mobContainer, 9)
+	mobContainer.Parent = settingsTabFrame
 
-    savePosBtn.MouseButton1Click:Connect(function()
-        local hrp = GetHRP()
-        if hrp then
-            savedPosition = hrp.CFrame
-            SaveConfig()
-            if savedCoordsLabelRef then
-                savedCoordsLabelRef.Text = string.format("Zapisane Kordynaty: %.1f, %.1f, %.1f", savedPosition.X, savedPosition.Y, savedPosition.Z)
-            end
-            savePosBtn.Text = "\226\156\133 Pozycja Zapisana!"
-            savePosBtn.BackgroundColor3 = C.green
-            task.delay(1.5, function()
-                savePosBtn.Text = "\240\159\147\140 Zapisz Pozycje Bazy"
-                savePosBtn.BackgroundColor3 = C.purple
-            end)
-        end
-    end)
+	local mobPad = Instance.new("UIPadding")
+	mobPad.PaddingTop = UDim.new(0, 6)
+	mobPad.PaddingBottom = UDim.new(0, 6)
+	mobPad.PaddingLeft = UDim.new(0, 6)
+	mobPad.PaddingRight = UDim.new(0, 6)
+	mobPad.Parent = mobContainer
 
-    farmBtnRef.MouseButton1Click:Connect(function() ToggleFarming(not config.IsFarming) end)
+	local mobListLayout = Instance.new("UIGridLayout")
+	mobListLayout.CellSize = UDim2_new(0.325, -6, 0, 28)
+	mobListLayout.CellPadding = UDim2_new(0, 6, 0, 6)
+	mobListLayout.Parent = mobContainer
 
-    chestBtn.MouseButton1Click:Connect(function()
-        if config.AutoChestType == "None" then
-            config.AutoChestType = "T1"
-        elseif config.AutoChestType == "T1" then
-            config.AutoChestType = "T2"
-        else
-            config.AutoChestType = "None"
-        end
-        UpdateChestButton()
-        SaveConfig()
-        if config.AutoChestType ~= "None" then OpenChestLoop() end
-    end)
+	for _, mobName in ipairs(MOBS) do
+		local btn = Instance.new("TextButton")
+		btn.Name = "Mob_" .. mobName
+		btn.Text = mobName
+		btn.Font = Enum.Font.GothamBold
+		btn.TextSize = 10
+		btn.TextColor3 = fromRGB(255, 255, 255)
+		btn.BorderSizePixel = 0
+		btn.AutoButtonColor = false
+		local isActive = config.SelectedMobs[mobName] == true
+		btn.BackgroundColor3 = isActive and C.green or fromRGB(120, 48, 48)
+		corner(btn, 6)
+		btn.Parent = mobContainer
+		trackConn(btn.MouseButton1Click:Connect(function()
+			config.SelectedMobs[mobName] = not (config.SelectedMobs[mobName] or false)
+			btn.BackgroundColor3 = config.SelectedMobs[mobName] and C.green or fromRGB(120, 48, 48)
+			SaveConfig()
+		end))
+	end
 
-    combatBtnRef.MouseButton1Click:Connect(function()
-        ToggleCombatFarming(not combatConfig.IsCombatFarming)
-    end)
+	sectionLabel(settingsTabFrame, "INTERFEJS")
+	local scaleRow = Instance.new("Frame")
+	scaleRow.Size = UDim2_new(1, 0, 0, 30)
+	scaleRow.LayoutOrder = nextOrd()
+	scaleRow.BackgroundTransparency = 1
+	scaleRow.Parent = settingsTabFrame
 
-    killBtn.MouseButton1Click:Connect(function()
-        _G.TrialAutoFarmRunning = false
-        if config.IsFarming then ToggleFarming(false) end
-        if combatConfig.IsCombatFarming then ToggleCombatFarming(false) end
-        antiAFK(false); ToggleGhostMode(false)
-        if consoleConnection then consoleConnection:Disconnect() end
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("BillboardGui") and v.Name == "MobNumberTag" then v:Destroy() end
-        end
-        if workspace:FindFirstChild("AutoFarm_GridConfig") then workspace.AutoFarm_GridConfig:Destroy() end
-        screenGui:Destroy()
-    end)
+	local function scaleStepBtn(txt, xScale, xOff)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2_new(0.5, -4, 1, 0)
+		b.Position = UDim2_new(xScale, xOff, 0, 0)
+		b.Text = txt
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = fromRGB(255, 255, 255)
+		b.BackgroundColor3 = C.panel2
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = false
+		corner(b, 8)
+		b.Parent = scaleRow
+		hoverable(b)
+		return b
+	end
+	local scaleDownBtn = scaleStepBtn("- Pomniejsz GUI", 0, 0)
+	local scaleUpBtn   = scaleStepBtn("+ Powieksz GUI", 0.5, 4)
 
-    -- ===== V32: Przycisk UKRYJ GUI (w Ustawieniach) =====
-    local hideGuiBtn = Instance.new("TextButton")
-    hideGuiBtn.Size = UDim2_new(1, -4, 0, 32)
-    hideGuiBtn.Position = UDim2_new(0, 2, 0, 582)
-    hideGuiBtn.Text = "\240\159\145\129 Ukryj GUI (pokaz ponownie: klawisz L)"
-    hideGuiBtn.Font = Enum.Font.GothamBold
-    hideGuiBtn.TextSize = 12
-    hideGuiBtn.TextColor3 = fromRGB(255, 255, 255)
-    hideGuiBtn.BackgroundColor3 = C.panel2
-    hideGuiBtn.BorderSizePixel = 0
-    hideGuiBtn.AutoButtonColor = false
-    corner(hideGuiBtn, 8)
-    addStroke(hideGuiBtn, C.stroke, 1, 0.5)
-    hideGuiBtn.Parent = settingsTabFrame
-    hideGuiBtn.MouseButton1Click:Connect(function()
-        mainFrame.Visible = false
-    end)
+	local resetBtn = actionButton(settingsTabFrame, 28, "Reset rozmiaru i skali GUI", C.panel2, 12)
+	local hideGuiBtn = actionButton(settingsTabFrame, 28, "Ukryj GUI (pokaz ponownie: klawisz L)", C.panel2, 12)
 
-    -- ===== V32: RECZNA zmiana rozmiaru GUI (uchwyt w prawym dolnym rogu) =====
-    local resizeHandle = Instance.new("TextButton")
-    resizeHandle.Name = "ResizeHandle"
-    resizeHandle.Size = UDim2_new(0, 18, 0, 18)
-    resizeHandle.Position = UDim2_new(1, -21, 1, -21)
-    resizeHandle.AnchorPoint = Vector2.new(0, 0)
-    resizeHandle.BackgroundColor3 = C.panel2
-    resizeHandle.Text = "\226\135\152"
-    resizeHandle.TextColor3 = C.sub
-    resizeHandle.Font = Enum.Font.GothamBold
-    resizeHandle.TextSize = 13
-    resizeHandle.BorderSizePixel = 0
-    resizeHandle.AutoButtonColor = false
-    resizeHandle.ZIndex = 6
-    corner(resizeHandle, 6)
-    resizeHandle.Parent = mainFrame
+	-- ===== LOGIKA ZAKLADEK / MINIMALIZACJI =====
+	local currentTabIsMain = true
+	local isMinimized = false
+	local expandedSize = mainFrame.Size
 
-    local resizing = false
-    local resizeStartMouse = nil
-    local resizeStartSize = nil
-    resizeHandle.MouseButton1Down:Connect(function()
-        if isMinimized then return end
-        resizing = true
-        resizeStartMouse = UserInputService:GetMouseLocation()
-        resizeStartSize = mainFrame.AbsoluteSize
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local cur = UserInputService:GetMouseLocation()
-            local newW = math.clamp(resizeStartSize.X + (cur.X - resizeStartMouse.X), 280, 620)
-            local newH = math.clamp(resizeStartSize.Y + (cur.Y - resizeStartMouse.Y), 130, 720)
-            mainFrame.Size = UDim2_new(0, newW, 0, newH)
-            expandedSize = mainFrame.Size
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            resizing = false
-        end
-    end)
+	local function setTab(main)
+		currentTabIsMain = main
+		mainTabFrame.Visible = main
+		settingsTabFrame.Visible = not main
+		mainTabBtn.BackgroundColor3 = main and C.blue or C.panel2
+		settingsTabBtn.BackgroundColor3 = main and C.panel2 or C.blue
+		mainTabBtn.TextColor3 = main and fromRGB(255, 255, 255) or C.sub
+		settingsTabBtn.TextColor3 = main and C.sub or fromRGB(255, 255, 255)
+	end
+	trackConn(mainTabBtn.MouseButton1Click:Connect(function() setTab(true) end))
+	trackConn(settingsTabBtn.MouseButton1Click:Connect(function() setTab(false) end))
 
-    setTab(true)
+	local resizeHandle -- forward
+
+	local function setMinimized(min)
+		isMinimized = min
+		tabRow.Visible = not min
+		footer.Visible = not min
+		if resizeHandle then resizeHandle.Visible = not min end
+		if min then
+			mainTabFrame.Visible = false
+			settingsTabFrame.Visible = false
+			mainFrame.Size = UDim2_new(0, expandedSize.X.Offset, 0, 44)
+			minBtn.Text = "+"
+		else
+			mainFrame.Size = expandedSize
+			setTab(currentTabIsMain)
+			minBtn.Text = "\226\128\148"
+		end
+	end
+	trackConn(minBtn.MouseButton1Click:Connect(function() setMinimized(not isMinimized) end))
+
+	-- ===== UCHWYT ZMIANY ROZMIARU (dziala z myszka i dotykiem) =====
+	resizeHandle = Instance.new("TextButton")
+	resizeHandle.Name = "ResizeHandle"
+	resizeHandle.Size = UDim2_new(0, 20, 0, 20)
+	resizeHandle.Position = UDim2_new(1, -22, 1, -22)
+	resizeHandle.BackgroundColor3 = C.panel2
+	resizeHandle.Text = "\226\151\162"
+	resizeHandle.TextColor3 = C.sub
+	resizeHandle.Font = Enum.Font.GothamBold
+	resizeHandle.TextSize = 12
+	resizeHandle.BorderSizePixel = 0
+	resizeHandle.AutoButtonColor = false
+	resizeHandle.ZIndex = 8
+	corner(resizeHandle, 6)
+	resizeHandle.Parent = mainFrame
+
+	-- ===== DRAG (pasek tytulu) + RESIZE (uchwyt) w jednym systemie inputu =====
+	local dragging, dragStart, dragStartPos = false, nil, nil
+	local resizing, resizeStart, resizeStartSize = false, nil, nil
+
+	local function isDragInput(input)
+		return input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+	end
+
+	trackConn(title.InputBegan:Connect(function(input)
+		if not isDragInput(input) then return end
+		dragging = true
+		dragStart = input.Position
+		dragStartPos = mainFrame.Position
+	end))
+
+	trackConn(resizeHandle.InputBegan:Connect(function(input)
+		if not isDragInput(input) or isMinimized then return end
+		resizing = true
+		resizeStart = input.Position
+		resizeStartSize = Vector2.new(mainFrame.Size.X.Offset, mainFrame.Size.Y.Offset)
+	end))
+
+	trackConn(UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		if dragging and dragStart then
+			local d = input.Position - dragStart
+			mainFrame.Position = UDim2_new(
+				dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
+				dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y
+			)
+		elseif resizing and resizeStart then
+			local d = input.Position - resizeStart
+			local s = uiScale.Scale
+			local w = math.clamp(resizeStartSize.X + d.X / s, 300, 700)
+			local h = math.clamp(resizeStartSize.Y + d.Y / s, 220, 820)
+			mainFrame.Size = UDim2_new(0, w, 0, h)
+			expandedSize = mainFrame.Size
+			config.GuiW = math.floor(w)
+			config.GuiH = math.floor(h)
+		end
+	end))
+
+	trackConn(UserInputService.InputEnded:Connect(function(input)
+		if not isDragInput(input) then return end
+		if resizing then SaveConfig() end
+		dragging = false
+		resizing = false
+	end))
+
+	-- Klawisz L: ukryj / pokaz GUI
+	trackConn(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.L then
+			mainFrame.Visible = not mainFrame.Visible
+		end
+	end))
+
+	-- ===== POLACZENIA USTAWIEN =====
+	trackConn(speedBox.FocusLost:Connect(function() config.Speed = tonumber(speedBox.Text) or config.Speed; speedBox.Text = tostring(config.Speed); SaveConfig() end))
+	trackConn(cooldownBox.FocusLost:Connect(function() config.Cooldown = tonumber(cooldownBox.Text) or config.Cooldown; cooldownBox.Text = tostring(config.Cooldown); SaveConfig() end))
+	trackConn(waveWaitBox.FocusLost:Connect(function() config.WaveWaitTime = tonumber(waveWaitBox.Text) or config.WaveWaitTime; waveWaitBox.Text = tostring(config.WaveWaitTime); SaveConfig() end))
+	trackConn(ghostYBox.FocusLost:Connect(function() config.GhostModeY = tonumber(ghostYBox.Text) or config.GhostModeY; ghostYBox.Text = tostring(config.GhostModeY); SaveConfig() end))
+	trackConn(combatYBox.FocusLost:Connect(function() config.CombatGhostY = tonumber(combatYBox.Text) or config.CombatGhostY; combatYBox.Text = tostring(config.CombatGhostY); SaveConfig() end))
+	trackConn(startSecBox.FocusLost:Connect(function() config.TimeToStartSec = tonumber(startSecBox.Text) or config.TimeToStartSec; startSecBox.Text = tostring(config.TimeToStartSec); SaveConfig() end))
+
+	trackConn(scaleDownBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale - 0.1) end))
+	trackConn(scaleUpBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale + 0.1) end))
+
+	trackConn(resetBtn.MouseButton1Click:Connect(function()
+		setScale(1)
+		mainFrame.Size = UDim2_new(0, 360, 0, 486)
+		expandedSize = mainFrame.Size
+		config.GuiW, config.GuiH = 360, 486
+		SaveConfig()
+	end))
+
+	trackConn(hideGuiBtn.MouseButton1Click:Connect(function()
+		mainFrame.Visible = false
+	end))
+
+	trackConn(clearSavedPosBtn.MouseButton1Click:Connect(function()
+		savedPosition = nil
+		SaveConfig()
+		if savedCoordsLabelRef then
+			savedCoordsLabelRef.Text = "Zapisane Kordynaty: Brak"
+		end
+		clearSavedPosBtn.Text = "Usunieto!"
+		clearSavedPosBtn.BackgroundColor3 = C.green
+		task.delay(1.5, function()
+			if clearSavedPosBtn.Parent then
+				clearSavedPosBtn.Text = "\240\159\151\145 Usun zapisane kordynaty"
+				clearSavedPosBtn.BackgroundColor3 = C.red
+			end
+		end)
+	end))
+
+	trackConn(trialBtn.MouseButton1Click:Connect(function()
+		if config.IsFarming then return end
+		if config.SelectedTrial == "Easy" then config.SelectedTrial = "Medium"
+		elseif config.SelectedTrial == "Medium" then config.SelectedTrial = "Hard"
+		else config.SelectedTrial = "Easy" end
+		trialBtn.Text = "Trial: " .. config.SelectedTrial
+		SaveConfig()
+	end))
+
+	trackConn(savePosBtn.MouseButton1Click:Connect(function()
+		local hrp = GetHRP()
+		if not hrp then return end
+		savedPosition = hrp.CFrame
+		SaveConfig()
+		if savedCoordsLabelRef then
+			savedCoordsLabelRef.Text = string.format("Zapisane Kordynaty: %.1f, %.1f, %.1f", savedPosition.X, savedPosition.Y, savedPosition.Z)
+		end
+		savePosBtn.Text = "Pozycja Zapisana!"
+		savePosBtn.BackgroundColor3 = C.green
+		task.delay(1.5, function()
+			if savePosBtn.Parent then
+				savePosBtn.Text = "\240\159\147\140 Zapisz Pozycje Bazy"
+				savePosBtn.BackgroundColor3 = C.purple
+			end
+		end)
+	end))
+
+	trackConn(farmBtnRef.MouseButton1Click:Connect(function()
+		ToggleFarming(not config.IsFarming)
+	end))
+
+	trackConn(chestBtn.MouseButton1Click:Connect(function()
+		if config.AutoChestType == "None" then
+			config.AutoChestType = "T1"
+		elseif config.AutoChestType == "T1" then
+			config.AutoChestType = "T2"
+		else
+			config.AutoChestType = "None"
+		end
+		UpdateChestButton()
+		SaveConfig()
+		if config.AutoChestType ~= "None" then OpenChestLoop() end
+	end))
+
+	trackConn(combatBtnRef.MouseButton1Click:Connect(function()
+		ToggleCombatFarming(not combatConfig.IsCombatFarming)
+	end))
+
+	-- ===== KILL SWITCH (2 klikniecia = potwierdzenie) =====
+	local killArmed = false
+	trackConn(killBtn.MouseButton1Click:Connect(function()
+		if not killArmed then
+			killArmed = true
+			killBtn.Text = "\226\154\160 KLIKNIJ PONOWNIE ABY WYLACZYC"
+			killBtn.BackgroundColor3 = C.orange
+			task.delay(3, function()
+				if killArmed and killBtn.Parent then
+					killArmed = false
+					killBtn.Text = "\240\159\155\145  WYLACZ SKRYPT CALKOWICIE"
+					killBtn.BackgroundColor3 = C.red
+				end
+			end)
+			return
+		end
+		killBtn.Text = "Wylaczanie..."
+		killBtn.BackgroundColor3 = C.panel2
+		task.defer(ShutdownScript)
+	end))
+
+	setTab(true)
 end
 
 CreateGUI()
