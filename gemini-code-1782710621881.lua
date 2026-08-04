@@ -1,5 +1,5 @@
 --[[
-	TRIAL AUTO-FARM  •  V35 (Sciezka Hard Triala + sciezki per trial)
+	TRIAL AUTO-FARM  •  V37 (Star Farm - zbieranie gwiazdek)
 	- Combat: switch-on-animation (MobDeath = 112069791584815)
 	- 15s bez zabicia -> TP do Medium, 30s -> STOP combat
 	- Anti-stuck w trialu: podbij Y o 1 gdy postac stoi >1s
@@ -17,6 +17,10 @@
 	- V35: wlasna sciezka dla HARD TRIALA (7 wezlow, kordynaty uzytkownika);
 	       mechanika farmienia identyczna jak Medium, ustawienia uniwersalne;
 	       przycisk Trial przelacza Easy/Medium/Hard i podmienia sciezke
+	- V36: FIX combatu - rozpoznawanie TYPU moba (najdluzsze dopasowanie z MOBS)
+	- V37: STAR FARM - podlatywanie do gwiazdek z workspace.ClientStars,
+	       priorytet mutacji Lunar > Alien > Plasma > Normal,
+	       opcja "Postoj przy gwiazdce (sekundy)" w Ustawieniach
 ]]
 
 -- ===== SERVICES =====
@@ -73,6 +77,7 @@ local config = {
 	AutoChestType = "None",
 	CombatTweenSpeed = 0.3,
 	SelectedMobs = {},
+	StarHoldTime = 3,
 	GuiScale = 1,
 	GuiW = 372,
 	GuiH = 500,
@@ -96,6 +101,7 @@ local function LoadConfig()
 		config.AutoChestType   = decoded.AutoChestType or "None"
 		config.CombatTweenSpeed = decoded.CombatTweenSpeed or config.CombatTweenSpeed
 		config.SelectedMobs    = decoded.SelectedMobs or config.SelectedMobs
+		config.StarHoldTime    = tonumber(decoded.StarHoldTime) or config.StarHoldTime
 		config.GuiScale        = tonumber(decoded.GuiScale) or config.GuiScale
 		config.GuiW            = tonumber(decoded.GuiW) or config.GuiW
 		config.GuiH            = tonumber(decoded.GuiH) or config.GuiH
@@ -120,6 +126,7 @@ local function SaveConfig()
 			AutoChestType = config.AutoChestType,
 			CombatTweenSpeed = config.CombatTweenSpeed,
 			SelectedMobs = config.SelectedMobs,
+			StarHoldTime = config.StarHoldTime,
 			GuiScale = config.GuiScale,
 			GuiW = config.GuiW,
 			GuiH = config.GuiH,
@@ -377,6 +384,7 @@ end
 
 -- ===== GUI REFS =====
 local farmBtnRef, singleTimerLabelRef, savedCoordsLabelRef, combatBtnRef, combatStatusLabelRef
+local starBtnRef, starStatusLabelRef
 
 -- ===== ANTI-AFK =====
 local afkConn
@@ -393,6 +401,10 @@ antiAFK(true)
 
 -- ===== GHOST MODE =====
 local NoclipConnection, AxisLockConnection
+-- ===== V37: STAN STAR FARMU =====
+local starConfig = { IsStarFarming = false }
+local ToggleStarFarming
+
 local isGhostMode = false
 local ghostTargetY = config.GhostModeY
 
@@ -520,7 +532,7 @@ local function moveToPoint(targetPos, hrp)
 	local bumped = false
 	local bumpedAt = 0
 
-	while (config.IsFarming or combatConfig.IsCombatFarming) and _G.TrialAutoFarmRunning do
+	while (config.IsFarming or combatConfig.IsCombatFarming or starConfig.IsStarFarming) and _G.TrialAutoFarmRunning do
 		if not hrp or not hrp.Parent or (humanoid and humanoid.Health <= 0) then break end
 
 		local currentPos = hrp.Position
@@ -1147,14 +1159,15 @@ local function WaitForCombatMobDeath(mob)
     return animPlayed or (GetMobCharacter(mob) == nil)
 end
 
--- Normalizuje nazwe (male litery, bez spacji) do porownan
+-- Normalizuje nazwe: male litery, bez spacji/podkreslnikow/lacznikow/kropek.
 local function NormalizeMobName(str)
-	return (string.gsub(string.lower(str or ""), "%s+", ""))
+	local s = string.lower(str or "")
+	s = string.gsub(s, "[%s_%-%.]+", "")
+	return s
 end
 
--- Czy dany mob jest zaznaczony w GUI? Dopasowanie odporne na drobne roznice
--- (spacje / wielkosc liter oraz nazwy zawierajace sie w sobie) + atrybuty / StringValue.
-local function IsMobSelected(mob)
+-- Zbiera wszystkie mozliwe nazwy slotu/moba
+local function CollectMobNames(mob)
 	local names = { mob.Name }
 	local char = mob:FindFirstChild("MobCharacter")
 	if char then table.insert(names, char.Name) end
@@ -1166,17 +1179,44 @@ local function IsMobSelected(mob)
 		local cattr = char:GetAttribute("DisplayName") or char:GetAttribute("MobName") or char:GetAttribute("Name")
 		if cattr then table.insert(names, tostring(cattr)) end
 	end
+	return names
+end
 
+-- ===== V36: ROZPOZNAWANIE TYPU MOBA =====
+-- Z listy MOBS wybieramy NAJDLUZSZA nazwe pasujaca do slotu:
+--   "Pirate_3" -> Pirate,  "Pirate Captain" -> Pirate Captain (nie Pirate)
+local function DetectMobType(mob)
+	local names = CollectMobNames(mob)
+	local best, bestLen = nil, 0
+	for _, candidate in ipairs(MOBS) do
+		local nc = NormalizeMobName(candidate)
+		if nc ~= "" and #nc > bestLen then
+			for _, nm in ipairs(names) do
+				local nnm = NormalizeMobName(nm)
+				if nnm ~= "" and (nnm == nc or string.find(nnm, nc, 1, true)) then
+					best, bestLen = candidate, #nc
+					break
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Dziala dla DOWOLNEJ liczby zaznaczonych typow naraz.
+local function IsMobSelected(mob)
+	local t = DetectMobType(mob)
+	if t then
+		return config.SelectedMobs[t] == true
+	end
+
+	local names = CollectMobNames(mob)
 	for sel, on in pairs(config.SelectedMobs) do
 		if on then
 			local nsel = NormalizeMobName(sel)
 			if nsel ~= "" then
 				for _, nm in ipairs(names) do
-					local nnm = NormalizeMobName(nm)
-					-- FIX V32: TYLKO dokladne dopasowanie (Pirate NIE laczy sie z Pirate Captain)
-						if nnm ~= "" and nnm == nsel then
-						return true
-					end
+					if NormalizeMobName(nm) == nsel then return true end
 				end
 			end
 		end
@@ -1413,6 +1453,216 @@ ToggleCombatFarming = function(state)
 	end
 end
 
+-- ===== V37: STAR FARM (workspace.ClientStars) =====
+-- Podlatuje do gwiazdek dokladnie tak jak combat farm podlatuje do mobow.
+-- Priorytet mutacji: Lunar > Alien > Plasma > Normal.
+-- Przy remisie priorytetu wybierana jest NAJBLIZSZA gwiazdka.
+local STAR_PRIORITY = { Lunar = 4, Alien = 3, Plasma = 2, Normal = 1 }
+local starIgnore = {}
+
+local function GetStarsFolder()
+	return workspace:FindFirstChild("ClientStars")
+end
+
+-- Mutacja czytana z ATRYBUTOW gwiazdki. Nazwa atrybutu bywa rozna,
+-- wiec szukamy atrybutu, ktorego WARTOSC to Lunar/Alien/Plasma/Normal.
+local function GetStarMutation(star)
+	local ok, attrs = pcall(function() return star:GetAttributes() end)
+	if ok and type(attrs) == "table" then
+		-- najpierw typowe nazwy atrybutu
+		for _, key in ipairs({"Mutation", "mutation", "Mutacja", "Type", "Rarity"}) do
+			local v = attrs[key]
+			if type(v) == "string" then
+				for name in pairs(STAR_PRIORITY) do
+					if string.lower(v) == string.lower(name) then return name end
+				end
+			end
+		end
+		-- potem DOWOLNY atrybut pasujacy wartoscia
+		for _, v in pairs(attrs) do
+			if type(v) == "string" then
+				for name in pairs(STAR_PRIORITY) do
+					if string.lower(v) == string.lower(name) then return name end
+				end
+			end
+		end
+	end
+	-- fallback: nazwa obiektu
+	local n = string.lower(star.Name or "")
+	for name in pairs(STAR_PRIORITY) do
+		if string.find(n, string.lower(name), 1, true) then return name end
+	end
+	return "Normal"
+end
+
+local function GetStarPosition(star)
+	if not star or not star.Parent then return nil end
+	if star:IsA("BasePart") then
+		local p = star.Position
+		if p == p then return p end
+		return nil
+	end
+	local ok, pivot = pcall(function() return star:GetPivot() end)
+	if ok and pivot then
+		local p = pivot.Position
+		if p == p then return p end
+	end
+	local part = star:FindFirstChildWhichIsA("BasePart", true)
+	return part and part.Position or nil
+end
+
+-- Zwraca: gwiazdka, pozycja, mutacja, ile gwiazdek widocznych
+local function FindBestStar()
+	local folder = GetStarsFolder()
+	if not folder then return nil, nil, nil, 0 end
+
+	local hrp = GetHRP()
+	local origin = hrp and hrp.Position or Vector3.zero
+
+	local best, bestPos, bestMut = nil, nil, nil
+	local bestPrio, bestDist, total = -1, math.huge, 0
+
+	for _, star in ipairs(folder:GetChildren()) do
+		if not (starIgnore[star] and tick() < starIgnore[star]) then
+			local pos = GetStarPosition(star)
+			if pos then
+				total += 1
+				local mut  = GetStarMutation(star)
+				local prio = STAR_PRIORITY[mut] or 0
+				local d    = (pos - origin).Magnitude
+				if prio > bestPrio or (prio == bestPrio and d < bestDist) then
+					best, bestPos, bestMut, bestPrio, bestDist = star, pos, mut, prio, d
+				end
+			end
+		end
+	end
+	return best, bestPos, bestMut, total
+end
+
+local function SetStarStatus(txt)
+	if starStatusLabelRef then starStatusLabelRef.Text = txt end
+end
+
+local function StarLoop()
+	starIgnore = {}
+	while starConfig.IsStarFarming and _G.TrialAutoFarmRunning do
+		-- Trial i AutoFarm maja PRIORYTET nad zbieraniem gwiazdek
+		if CheckIfInTrial() or combatConfig.PausedForTrial or config.IsFarming then
+			SetStarStatus("Status: Wstrzymano (priorytet Trial/AutoFarm)")
+			task.wait(0.4)
+			continue
+		end
+
+		local ok, err = pcall(function()
+			for k, v in pairs(starIgnore) do
+				if tick() >= v or not (k and k.Parent) then starIgnore[k] = nil end
+			end
+
+			local star, starPos, mut, total = FindBestStar()
+			if not star or not starPos then
+				local h = GetHRP()
+				if h then h.AssemblyLinearVelocity = Vector3.zero end
+				if not GetStarsFolder() then
+					SetStarStatus("Status: Brak folderu workspace.ClientStars")
+				else
+					SetStarStatus(total == 0 and "Status: Brak gwiazdek (czekam)" or "Status: Gwiazdki w cooldownie")
+				end
+				task.wait(0.3)
+				return
+			end
+
+			local hrp = GetHRP()
+			if not hrp then return end
+
+			-- Lecimy na WYSOKOSC GWIAZDKI (Y z gwiazdki, nie z ustawien)
+			ToggleGhostMode(true, starPos.Y)
+			SetStarStatus(string.format("Status: Lece do %s [%s]", star.Name, tostring(mut)))
+
+			local t0 = tick()
+			while starConfig.IsStarFarming and _G.TrialAutoFarmRunning
+				and star.Parent and not CheckIfInTrial() and not config.IsFarming do
+
+				local pos = GetStarPosition(star)
+				if not pos then break end
+				ghostTargetY = pos.Y
+
+				local d = (Vector3_new(pos.X, 0, pos.Z) - Vector3_new(hrp.Position.X, 0, hrp.Position.Z)).Magnitude
+				if d < 2.5 then break end
+
+				if tick() - t0 > 20 then
+					starIgnore[star] = tick() + 15
+					SetStarStatus("Status: " .. star.Name .. " nieosiagalna -> pomijam")
+					return
+				end
+
+				moveToPoint(pos, hrp)
+				Heartbeat:Wait()
+			end
+
+			if not star.Parent then
+				SetStarStatus("Status: Zebrano [" .. tostring(mut) .. "]")
+				return
+			end
+
+			-- ===== POSTOJ PRZY GWIAZDCE (z Ustawien) =====
+			local hold = tonumber(config.StarHoldTime) or 3
+			if hold < 0 then hold = 0 end
+			SetStarStatus(string.format("Status: Zbieram %s [%s] - %.1fs", star.Name, tostring(mut), hold))
+
+			local hs = tick()
+			while starConfig.IsStarFarming and _G.TrialAutoFarmRunning and (tick() - hs) < hold do
+				if not star.Parent then break end
+				if CheckIfInTrial() or config.IsFarming then break end
+				local pos = GetStarPosition(star)
+				if pos then
+					ghostTargetY = pos.Y
+					pcall(function()
+						hrp.AssemblyLinearVelocity = Vector3.zero
+						hrp.CFrame = CFrame_new(pos) * (hrp.CFrame - hrp.CFrame.Position)
+					end)
+				end
+				task.wait(0.05)
+			end
+
+			-- Jesli nadal istnieje - krotki cooldown, zeby nie zapetlic sie na jednej
+			if star.Parent then
+				starIgnore[star] = tick() + 6
+				SetStarStatus("Status: " .. star.Name .. " nie zniknela -> cooldown 6s")
+			else
+				SetStarStatus("Status: Zebrano [" .. tostring(mut) .. "]")
+			end
+		end)
+
+		if not ok then
+			warn("[STAR ERROR] " .. tostring(err))
+			SetStarStatus("Status: Blad!")
+			task.wait(0.3)
+		end
+		task.wait(0.05)
+	end
+
+	if not config.IsFarming and not combatConfig.IsCombatFarming then
+		ToggleGhostMode(false)
+	end
+	SetStarStatus("Status: Zatrzymano")
+end
+
+ToggleStarFarming = function(state)
+	starConfig.IsStarFarming = state
+	if state then
+		if starBtnRef then
+			starBtnRef.Text = "\226\143\184 Stop Star Farm"
+			starBtnRef.BackgroundColor3 = fromRGB(230, 126, 34)
+		end
+		task.spawn(StarLoop)
+	else
+		if starBtnRef then
+			starBtnRef.Text = "\226\173\144 Start Star Farm"
+			starBtnRef.BackgroundColor3 = fromRGB(46, 204, 113)
+		end
+	end
+end
+
 -- ===== V33/V34: PELNE WYLACZENIE SKRYPTU (KILL SWITCH) =====
 local guiConnections = {}
 local function trackConn(c)
@@ -1433,8 +1683,10 @@ ShutdownScript = function(silent)
 	-- 2) Wylacz tryby farmienia
 	pcall(function() if config.IsFarming then ToggleFarming(false) end end)
 	pcall(function() if combatConfig.IsCombatFarming then ToggleCombatFarming(false) end end)
+	pcall(function() if starConfig.IsStarFarming and ToggleStarFarming then ToggleStarFarming(false) end end)
 	config.IsFarming = false
 	combatConfig.IsCombatFarming = false
+	starConfig.IsStarFarming = false
 	config.AutoChestType = "None"
 
 	-- 3) Anuluj aktywne tweeny ruchu
@@ -1644,7 +1896,7 @@ local function CreateGUI()
 	titleText.Position = UDim2_new(0, 32, 0, 0)
 	titleText.BackgroundTransparency = 1
 	titleText.RichText = true
-	titleText.Text = "TRIAL AUTO-FARM <font color=\"rgb(214,220,255)\">V35</font>"
+	titleText.Text = "TRIAL AUTO-FARM <font color=\"rgb(214,220,255)\">V37</font>"
 	titleText.TextColor3 = fromRGB(255, 255, 255)
 	titleText.TextXAlignment = Enum.TextXAlignment.Left
 	titleText.Font = F_BOLD
@@ -1906,6 +2158,42 @@ local function CreateGUI()
 	combatStatusLabelRef.Parent = statusPill
 	readable(combatStatusLabelRef)
 
+	-- ===== V37: KARTA STAR FARM =====
+	local starCard = makeCard(mainTabFrame, "STAR FARM (ClientStars)", fromRGB(255, 214, 102))
+	starBtnRef = actionButton(starCard, 42, "\226\173\144 Start Star Farm", C.green, 16)
+
+	local starPill = Instance.new("Frame")
+	starPill.Size = UDim2_new(1, 0, 0, 28)
+	starPill.LayoutOrder = nextOrd()
+	starPill.BackgroundColor3 = C.panel2
+	starPill.BorderSizePixel = 0
+	corner(starPill, 8)
+	starPill.Parent = starCard
+
+	starStatusLabelRef = Instance.new("TextLabel")
+	starStatusLabelRef.Size = UDim2_new(1, -16, 1, 0)
+	starStatusLabelRef.Position = UDim2_new(0, 8, 0, 0)
+	starStatusLabelRef.BackgroundTransparency = 1
+	starStatusLabelRef.Text = "Status: Nieaktywny"
+	starStatusLabelRef.TextColor3 = C.sub
+	starStatusLabelRef.TextXAlignment = Enum.TextXAlignment.Left
+	starStatusLabelRef.Font = F_MED
+	starStatusLabelRef.TextSize = 13
+	starStatusLabelRef.Parent = starPill
+	readable(starStatusLabelRef)
+
+	local starPrioLabel = Instance.new("TextLabel")
+	starPrioLabel.Size = UDim2_new(1, 0, 0, 16)
+	starPrioLabel.LayoutOrder = nextOrd()
+	starPrioLabel.BackgroundTransparency = 1
+	starPrioLabel.Text = "Priorytet: Lunar > Alien > Plasma > Normal"
+	starPrioLabel.TextColor3 = C.dim
+	starPrioLabel.TextXAlignment = Enum.TextXAlignment.Left
+	starPrioLabel.Font = F_MED
+	starPrioLabel.TextSize = 12
+	starPrioLabel.Parent = starCard
+	readable(starPrioLabel)
+
 	local function UpdateChestButton()
 		if config.AutoChestType == "None" then
 			chestBtn.Text = "Auto Chest: OFF"
@@ -1965,6 +2253,7 @@ local function CreateGUI()
 	local ghostYBox   = CreateInput("Wysokosc Ghost Mode (Y)", tostring(config.GhostModeY))
 	local startSecBox = CreateInput("Teleport gdy <= X sek (otwarty portal)", tostring(config.TimeToStartSec))
 	local combatYBox  = CreateInput("Wysokosc Combat Ghost (Y)", tostring(config.CombatGhostY))
+	local starHoldBox = CreateInput("Postoj przy gwiazdce (sekundy)", tostring(config.StarHoldTime))
 
 	local combatInfoLabel = Instance.new("TextLabel")
 	combatInfoLabel.Size = UDim2_new(1, 0, 0, 34)
@@ -2237,6 +2526,7 @@ local function CreateGUI()
 	trackConn(waveWaitBox.FocusLost:Connect(function() config.WaveWaitTime = tonumber(waveWaitBox.Text) or config.WaveWaitTime; waveWaitBox.Text = tostring(config.WaveWaitTime); SaveConfig() end))
 	trackConn(ghostYBox.FocusLost:Connect(function() config.GhostModeY = tonumber(ghostYBox.Text) or config.GhostModeY; ghostYBox.Text = tostring(config.GhostModeY); SaveConfig() end))
 	trackConn(combatYBox.FocusLost:Connect(function() config.CombatGhostY = tonumber(combatYBox.Text) or config.CombatGhostY; combatYBox.Text = tostring(config.CombatGhostY); SaveConfig() end))
+	trackConn(starHoldBox.FocusLost:Connect(function() config.StarHoldTime = tonumber(starHoldBox.Text) or config.StarHoldTime; if config.StarHoldTime < 0 then config.StarHoldTime = 0 end; starHoldBox.Text = tostring(config.StarHoldTime); SaveConfig() end))
 	trackConn(startSecBox.FocusLost:Connect(function() config.TimeToStartSec = tonumber(startSecBox.Text) or config.TimeToStartSec; startSecBox.Text = tostring(config.TimeToStartSec); SaveConfig() end))
 
 	trackConn(scaleDownBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale - 0.1) end))
@@ -2317,6 +2607,10 @@ local function CreateGUI()
 
 	trackConn(combatBtnRef.MouseButton1Click:Connect(function()
 		ToggleCombatFarming(not combatConfig.IsCombatFarming)
+	end))
+
+	trackConn(starBtnRef.MouseButton1Click:Connect(function()
+		ToggleStarFarming(not starConfig.IsStarFarming)
 	end))
 
 	-- ===== KILL SWITCH (2 klikniecia = potwierdzenie) =====
