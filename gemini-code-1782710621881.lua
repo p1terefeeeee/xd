@@ -1,5 +1,5 @@
 --[[
-	TRIAL AUTO-FARM  •  V38 (Star Farm - lot na kordy + postoj)
+	TRIAL AUTO-FARM  •  V39 (Star Farm - TP po kolei od gory folderu)
 	- Combat: switch-on-animation (MobDeath = 112069791584815)
 	- 15s bez zabicia -> TP do Medium, 30s -> STOP combat
 	- Anti-stuck w trialu: podbij Y o 1 gdy postac stoi >1s
@@ -78,8 +78,7 @@ local config = {
 	CombatTweenSpeed = 0.3,
 	SelectedMobs = {},
 	StarHoldTime = 3,
-	StarSkipCooldown = 30,
-	StarFlyTimeout = 20,
+	StarSkipCooldown = 0,
 	GuiScale = 1,
 	GuiW = 372,
 	GuiH = 500,
@@ -105,7 +104,6 @@ local function LoadConfig()
 		config.SelectedMobs    = decoded.SelectedMobs or config.SelectedMobs
 		config.StarHoldTime    = tonumber(decoded.StarHoldTime) or config.StarHoldTime
 		config.StarSkipCooldown = tonumber(decoded.StarSkipCooldown) or config.StarSkipCooldown
-		config.StarFlyTimeout  = tonumber(decoded.StarFlyTimeout) or config.StarFlyTimeout
 		config.GuiScale        = tonumber(decoded.GuiScale) or config.GuiScale
 		config.GuiW            = tonumber(decoded.GuiW) or config.GuiW
 		config.GuiH            = tonumber(decoded.GuiH) or config.GuiH
@@ -132,7 +130,6 @@ local function SaveConfig()
 			SelectedMobs = config.SelectedMobs,
 			StarHoldTime = config.StarHoldTime,
 			StarSkipCooldown = config.StarSkipCooldown,
-			StarFlyTimeout = config.StarFlyTimeout,
 			GuiScale = config.GuiScale,
 			GuiW = config.GuiW,
 			GuiH = config.GuiH,
@@ -1501,20 +1498,40 @@ local function GetStarMutation(star)
 	return "Normal"
 end
 
-local function GetStarPosition(star)
+-- ===== V39: KORDY Z StarPart -> Pivot -> PivotOffset.Position =====
+-- Kolejnosc zrodel:
+--   1. star.StarPart.PivotOffset.Position   (dokladnie to, co widzisz w Properties)
+--   2. star.StarPart:GetPivot().Position    (pivot w swiecie, gdy offset jest zerowy)
+--   3. star.StarPart.Position               (fallback)
+local function GetStarPart(star)
 	if not star or not star.Parent then return nil end
-	if star:IsA("BasePart") then
-		local p = star.Position
-		if p == p then return p end
-		return nil
+	if star:IsA("BasePart") and star.Name == "StarPart" then return star end
+	local p = star:FindFirstChild("StarPart", true)
+	if p and p:IsA("BasePart") then return p end
+	if star:IsA("BasePart") then return star end
+	return star:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function GetStarPosition(star)
+	local part = GetStarPart(star)
+	if not part then return nil end
+
+	-- 1. PivotOffset.Position (surowe kordy z Properties)
+	local ok, off = pcall(function() return part.PivotOffset.Position end)
+	if ok and off and off == off and off.Magnitude > 25 then
+		return off
 	end
-	local ok, pivot = pcall(function() return star:GetPivot() end)
-	if ok and pivot then
-		local p = pivot.Position
-		if p == p then return p end
+
+	-- 2. Pivot w przestrzeni swiata
+	local ok2, piv = pcall(function() return part:GetPivot().Position end)
+	if ok2 and piv and piv == piv and piv.Magnitude > 0 then
+		return piv
 	end
-	local part = star:FindFirstChildWhichIsA("BasePart", true)
-	return part and part.Position or nil
+
+	-- 3. Zwykla pozycja partu
+	local p = part.Position
+	if p == p then return p end
+	return nil
 end
 
 -- Zwraca: gwiazdka, pozycja, mutacja, ile gwiazdek widocznych
@@ -1549,8 +1566,16 @@ local function SetStarStatus(txt)
 	if starStatusLabelRef then starStatusLabelRef.Text = txt end
 end
 
+-- ===== V39: SEKWENCYJNY OBCHOD FOLDERA + TELEPORT =====
+-- Idziemy po workspace.ClientStars OD GORY DO DOLU (kolejnosc GetChildren),
+-- teleport na kordy StarPart.PivotOffset.Position, postoj X sekund,
+-- potem nastepne dziecko. Po ostatnim wracamy na gore i tak w kolko.
+local starIndex = 1
+
 local function StarLoop()
 	starIgnore = {}
+	starIndex = 1
+
 	while starConfig.IsStarFarming and _G.TrialAutoFarmRunning do
 		-- Trial i AutoFarm maja PRIORYTET nad zbieraniem gwiazdek
 		if CheckIfInTrial() or combatConfig.PausedForTrial or config.IsFarming then
@@ -1560,76 +1585,62 @@ local function StarLoop()
 		end
 
 		local ok, err = pcall(function()
-			for k, v in pairs(starIgnore) do
-				if tick() >= v or not (k and k.Parent) then starIgnore[k] = nil end
+			local folder = GetStarsFolder()
+			if not folder then
+				SetStarStatus("Status: Brak folderu workspace.ClientStars")
+				task.wait(0.5)
+				return
 			end
 
-			local star, starPos, mut, total = FindBestStar()
-			if not star or not starPos then
-				local h = GetHRP()
-				if h then h.AssemblyLinearVelocity = Vector3.zero end
-				if not GetStarsFolder() then
-					SetStarStatus("Status: Brak folderu workspace.ClientStars")
-				else
-					SetStarStatus(total == 0 and "Status: Brak gwiazdek (czekam)" or "Status: Gwiazdki w cooldownie")
-				end
-				task.wait(0.3)
+			local list = folder:GetChildren()
+			if #list == 0 then
+				starIndex = 1
+				SetStarStatus("Status: Brak gwiazdek (czekam)")
+				task.wait(0.5)
+				return
+			end
+
+			-- zawijanie na gore folderu
+			if starIndex > #list then starIndex = 1 end
+
+			local star = list[starIndex]
+			local idx  = starIndex
+			starIndex += 1  -- nastepny obieg = nastepne dziecko, zawsze do przodu
+
+			if not star or not star.Parent then return end
+
+			local pos = GetStarPosition(star)
+			if not pos then
+				SetStarStatus(string.format("Status: [%d/%d] %s - brak kordow, pomijam", idx, #list, star.Name))
 				return
 			end
 
 			local hrp = GetHRP()
 			if not hrp then return end
 
-			-- ===== V38: LOT TYLKO NA KORDY (snapshot pozycji) =====
-			-- Cel jest zamrozony w momencie wyboru gwiazdki. Postac leci na te
-			-- konkretne XYZ i nie sciga obiektu, ktory moze sie ruszac/znikac.
-			local targetPos = starPos
-			ToggleGhostMode(true, targetPos.Y)
-			SetStarStatus(string.format("Status: Lece na kordy %s [%s]", star.Name, tostring(mut)))
+			local mut = GetStarMutation(star)
 
-			local t0 = tick()
-			local reached = false
-			while starConfig.IsStarFarming and _G.TrialAutoFarmRunning
-				and not CheckIfInTrial() and not config.IsFarming do
-
-				ghostTargetY = targetPos.Y
-
-				local d = (Vector3_new(targetPos.X, 0, targetPos.Z) - Vector3_new(hrp.Position.X, 0, hrp.Position.Z)).Magnitude
-				if d < 2.5 then reached = true; break end
-
-				if tick() - t0 > (tonumber(config.StarFlyTimeout) or 20) then
-					starIgnore[star] = tick() + (tonumber(config.StarSkipCooldown) or 30)
-					SetStarStatus("Status: " .. star.Name .. " nieosiagalna -> nastepna")
-					return
-				end
-
-				moveToPoint(targetPos, hrp)
-				Heartbeat:Wait()
-			end
+			-- ===== TELEPORT NA KORDY (bez lotu) =====
+			ToggleGhostMode(true, pos.Y)
+			SafeTeleport(hrp, CFrame_new(pos), 0.2)
+			SetStarStatus(string.format("Status: [%d/%d] TP %s [%s]", idx, #list, star.Name, tostring(mut)))
 
 			-- ===== POSTOJ NA KORDACH (czas z Ustawien) =====
-			-- Stoimy DOKLADNIE tyle, ile ustawiles, i lecimy do nastepnej gwiazdki
-			-- niezaleznie od tego, czy ta zniknela, czy nie.
-			if reached then
-				local hold = tonumber(config.StarHoldTime) or 3
-				if hold < 0 then hold = 0 end
-				SetStarStatus(string.format("Status: Postoj %s [%s] - %.1fs", star.Name, tostring(mut), hold))
+			local hold = tonumber(config.StarHoldTime) or 3
+			if hold < 0 then hold = 0 end
 
-				local hs = tick()
-				while starConfig.IsStarFarming and _G.TrialAutoFarmRunning and (tick() - hs) < hold do
-					if CheckIfInTrial() or config.IsFarming then break end
-					ghostTargetY = targetPos.Y
-					pcall(function()
-						hrp.AssemblyLinearVelocity = Vector3.zero
-						hrp.CFrame = CFrame_new(targetPos) * (hrp.CFrame - hrp.CFrame.Position)
-					end)
-					task.wait(0.05)
-				end
+			local hs = tick()
+			while starConfig.IsStarFarming and _G.TrialAutoFarmRunning and (tick() - hs) < hold do
+				if CheckIfInTrial() or config.IsFarming then break end
+				ghostTargetY = pos.Y
+				pcall(function()
+					hrp.AssemblyLinearVelocity = Vector3.zero
+					hrp.CFrame = CFrame_new(pos) * (hrp.CFrame - hrp.CFrame.Position)
+				end)
+				task.wait(0.05)
 			end
 
-			-- ZAWSZE oznacz gwiazdke jako odwiedzona -> lecimy do KOLEJNEJ
-			starIgnore[star] = tick() + (tonumber(config.StarSkipCooldown) or 30)
-			SetStarStatus("Status: Koniec postoju -> nastepna gwiazdka")
+			SetStarStatus(string.format("Status: [%d/%d] koniec postoju -> nastepna", idx, #list))
 		end)
 
 		if not ok then
@@ -1637,7 +1648,10 @@ local function StarLoop()
 			SetStarStatus("Status: Blad!")
 			task.wait(0.3)
 		end
-		task.wait(0.05)
+
+		-- przerwa miedzy gwiazdkami
+		local gap = tonumber(config.StarSkipCooldown) or 0
+		if gap > 0 then task.wait(gap) else task.wait(0.05) end
 	end
 
 	if not config.IsFarming and not combatConfig.IsCombatFarming then
@@ -2253,8 +2267,7 @@ local function CreateGUI()
 	local startSecBox = CreateInput("Teleport gdy <= X sek (otwarty portal)", tostring(config.TimeToStartSec))
 	local combatYBox  = CreateInput("Wysokosc Combat Ghost (Y)", tostring(config.CombatGhostY))
 	local starHoldBox = CreateInput("Postoj przy gwiazdce (sekundy)", tostring(config.StarHoldTime))
-	local starCdBox   = CreateInput("Cooldown odwiedzonej gwiazdki (sekundy)", tostring(config.StarSkipCooldown))
-	local starFlyBox  = CreateInput("Limit czasu lotu na kordy (sekundy)", tostring(config.StarFlyTimeout))
+	local starCdBox   = CreateInput("Przerwa miedzy gwiazdkami (sekundy)", tostring(config.StarSkipCooldown))
 
 	local combatInfoLabel = Instance.new("TextLabel")
 	combatInfoLabel.Size = UDim2_new(1, 0, 0, 34)
@@ -2529,7 +2542,6 @@ local function CreateGUI()
 	trackConn(combatYBox.FocusLost:Connect(function() config.CombatGhostY = tonumber(combatYBox.Text) or config.CombatGhostY; combatYBox.Text = tostring(config.CombatGhostY); SaveConfig() end))
 	trackConn(starHoldBox.FocusLost:Connect(function() config.StarHoldTime = tonumber(starHoldBox.Text) or config.StarHoldTime; if config.StarHoldTime < 0 then config.StarHoldTime = 0 end; starHoldBox.Text = tostring(config.StarHoldTime); SaveConfig() end))
 	trackConn(starCdBox.FocusLost:Connect(function() config.StarSkipCooldown = tonumber(starCdBox.Text) or config.StarSkipCooldown; if config.StarSkipCooldown < 0 then config.StarSkipCooldown = 0 end; starCdBox.Text = tostring(config.StarSkipCooldown); SaveConfig() end))
-	trackConn(starFlyBox.FocusLost:Connect(function() config.StarFlyTimeout = tonumber(starFlyBox.Text) or config.StarFlyTimeout; if config.StarFlyTimeout < 3 then config.StarFlyTimeout = 3 end; starFlyBox.Text = tostring(config.StarFlyTimeout); SaveConfig() end))
 	trackConn(startSecBox.FocusLost:Connect(function() config.TimeToStartSec = tonumber(startSecBox.Text) or config.TimeToStartSec; startSecBox.Text = tostring(config.TimeToStartSec); SaveConfig() end))
 
 	trackConn(scaleDownBtn.MouseButton1Click:Connect(function() setScale(uiScale.Scale - 0.1) end))
